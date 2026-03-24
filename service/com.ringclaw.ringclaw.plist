@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.danbao.ringclaw</string>
+    <string>com.ringclaw.ringclaw</string>
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/ringclaw</string>

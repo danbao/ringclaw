@@ -1,4 +1,4 @@
-module github.com/danbao/ringclaw
+module github.com/ringclaw/ringclaw
 
 go 1.24.0
 

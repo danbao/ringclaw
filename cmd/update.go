@@ -15,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const githubRepo = "danbao/ringclaw"
+const githubRepo = "ringclaw/ringclaw"
 
 func init() {
 	rootCmd.AddCommand(updateCmd)

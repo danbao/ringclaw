@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/danbao/ringclaw/agent"
-	"github.com/danbao/ringclaw/api"
-	"github.com/danbao/ringclaw/config"
-	"github.com/danbao/ringclaw/messaging"
-	"github.com/danbao/ringclaw/ringcentral"
+	"github.com/ringclaw/ringclaw/agent"
+	"github.com/ringclaw/ringclaw/api"
+	"github.com/ringclaw/ringclaw/config"
+	"github.com/ringclaw/ringclaw/messaging"
+	"github.com/ringclaw/ringclaw/ringcentral"
 	"github.com/spf13/cobra"
 )
 

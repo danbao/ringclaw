@@ -7,8 +7,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/danbao/ringclaw/messaging"
-	"github.com/danbao/ringclaw/ringcentral"
+	"github.com/ringclaw/ringclaw/messaging"
+	"github.com/ringclaw/ringclaw/ringcentral"
 )
 
 // Server provides an HTTP API for sending messages.

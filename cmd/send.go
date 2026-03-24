@@ -6,9 +6,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/danbao/ringclaw/config"
-	"github.com/danbao/ringclaw/messaging"
-	"github.com/danbao/ringclaw/ringcentral"
+	"github.com/ringclaw/ringclaw/config"
+	"github.com/ringclaw/ringclaw/messaging"
+	"github.com/ringclaw/ringclaw/ringcentral"
 	"github.com/spf13/cobra"
 )
 

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/danbao/ringclaw/agent"
-	"github.com/danbao/ringclaw/ringcentral"
+	"github.com/ringclaw/ringclaw/agent"
+	"github.com/ringclaw/ringclaw/ringcentral"
 )
 
 // AgentFactory creates an agent by config name. Returns nil if the name is unknown.

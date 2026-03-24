@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/danbao/ringclaw/ringcentral"
+	"github.com/ringclaw/ringclaw/ringcentral"
 )
 
 // SendTypingPlaceholder sends a "Thinking..." placeholder message and returns its post ID.

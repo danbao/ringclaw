@@ -14,7 +14,7 @@ RingCentral AI Agent 桥接器 — 将 RingCentral Team Messaging 接入 AI Agen
 
 ```bash
 # 一键安装
-curl -sSL https://raw.githubusercontent.com/danbao/ringclaw/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/ringclaw/ringclaw/main/install.sh | sh
 
 # 设置 RingCentral 凭据
 export RC_CLIENT_ID="your_client_id"
@@ -44,13 +44,13 @@ ringclaw start
 
 ```bash
 # 通过 Go 安装
-go install github.com/danbao/ringclaw@latest
+go install github.com/ringclaw/ringclaw@latest
 
 # 通过 Docker
 docker run -it -v ~/.ringclaw:/root/.ringclaw \
   -e RC_CLIENT_ID=xxx -e RC_CLIENT_SECRET=xxx \
   -e RC_JWT_TOKEN=xxx -e RC_CHAT_ID=xxx \
-  ghcr.io/danbao/ringclaw start
+  ghcr.io/ringclaw/ringclaw start
 ```
 
 ## 架构
@@ -257,8 +257,8 @@ ringclaw start -f
 **macOS (launchd)：**
 
 ```bash
-cp service/com.danbao.ringclaw.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.danbao.ringclaw.plist
+cp service/com.ringclaw.ringclaw.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ringclaw.ringclaw.plist
 ```
 
 **Linux (systemd)：**
@@ -327,13 +327,13 @@ go build -o ringclaw .
 
 ## 贡献者
 
-<a href="https://github.com/danbao/ringclaw/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=danbao/ringclaw" />
+<a href="https://github.com/ringclaw/ringclaw/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=ringclaw/ringclaw" />
 </a>
 
 ## Star 趋势
 
-[![Star History Chart](https://api.star-history.com/svg?repos=danbao/ringclaw&type=Timeline)](https://star-history.com/#danbao/ringclaw&Timeline)
+[![Star History Chart](https://api.star-history.com/svg?repos=ringclaw/ringclaw&type=Timeline)](https://star-history.com/#ringclaw/ringclaw&Timeline)
 
 ## 许可证
 

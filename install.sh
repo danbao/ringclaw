@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-REPO="danbao/ringclaw"
+REPO="ringclaw/ringclaw"
 BINARY="ringclaw"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/danbao/ringclaw/ringcentral"
+	"github.com/ringclaw/ringclaw/ringcentral"
 )
 
 // reMarkdownImage matches markdown image syntax: ![alt](url)

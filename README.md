@@ -14,7 +14,7 @@ RingCentral AI Agent Bridge — connect RingCentral Team Messaging to AI agents 
 
 ```bash
 # One-line install
-curl -sSL https://raw.githubusercontent.com/danbao/ringclaw/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/ringclaw/ringclaw/main/install.sh | sh
 
 # Set RingCentral credentials
 export RC_CLIENT_ID="your_client_id"
@@ -43,13 +43,13 @@ That's it. On first start, RingClaw will:
 
 ```bash
 # Via Go
-go install github.com/danbao/ringclaw@latest
+go install github.com/ringclaw/ringclaw@latest
 
 # Via Docker
 docker run -it -v ~/.ringclaw:/root/.ringclaw \
   -e RC_CLIENT_ID=xxx -e RC_CLIENT_SECRET=xxx \
   -e RC_JWT_TOKEN=xxx -e RC_CHAT_ID=xxx \
-  ghcr.io/danbao/ringclaw start
+  ghcr.io/ringclaw/ringclaw start
 ```
 
 ## How It Works
@@ -255,8 +255,8 @@ Logs are written to `~/.ringclaw/ringclaw.log`.
 **macOS (launchd):**
 
 ```bash
-cp service/com.danbao.ringclaw.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.danbao.ringclaw.plist
+cp service/com.ringclaw.ringclaw.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ringclaw.ringclaw.plist
 ```
 
 **Linux (systemd):**
@@ -325,13 +325,13 @@ go build -o ringclaw .
 
 ## Contributors
 
-<a href="https://github.com/danbao/ringclaw/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=danbao/ringclaw" />
+<a href="https://github.com/ringclaw/ringclaw/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=ringclaw/ringclaw" />
 </a>
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=danbao/ringclaw&type=Timeline)](https://star-history.com/#danbao/ringclaw&Timeline)
+[![Star History Chart](https://api.star-history.com/svg?repos=ringclaw/ringclaw&type=Timeline)](https://star-history.com/#ringclaw/ringclaw&Timeline)
 
 ## License
 
