@@ -38,7 +38,8 @@ type ACPAgent struct {
 	notifyMu sync.Mutex
 	notifyCh map[string]chan *sessionUpdate // sessionID -> channel
 
-	stderr *acpStderrWriter // captures stderr for error reporting
+	stderr         *acpStderrWriter // captures stderr for error reporting
+	droppedUpdates atomic.Int64     // counter for dropped notification updates
 }
 
 // ACPAgentConfig holds configuration for the ACP agent.
@@ -406,7 +407,10 @@ func (a *ACPAgent) call(ctx context.Context, method string, params interface{}) 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case resp := <-ch:
+	case resp, ok := <-ch:
+		if !ok {
+			return nil, fmt.Errorf("agent process exited unexpectedly")
+		}
 		if resp.Error != nil {
 			msg := resp.Error.Message
 			// Enrich with stderr context if available
@@ -466,6 +470,19 @@ func (a *ACPAgent) readLoop() {
 		log.Printf("[acp] read loop error: %v", err)
 	}
 	log.Println("[acp] read loop ended")
+
+	// Close all pending request channels so callers don't block forever
+	a.pendingMu.Lock()
+	for id, ch := range a.pending {
+		close(ch)
+		delete(a.pending, id)
+	}
+	a.pendingMu.Unlock()
+
+	// Mark as not started so next Chat() call triggers auto-restart
+	a.mu.Lock()
+	a.started = false
+	a.mu.Unlock()
 }
 
 func (a *ACPAgent) handleSessionUpdate(params json.RawMessage) {
@@ -486,7 +503,10 @@ func (a *ACPAgent) handleSessionUpdate(params json.RawMessage) {
 		select {
 		case ch <- &p.Update:
 		default:
-			log.Printf("[acp] notification channel full, dropping update (session=%s)", p.SessionID)
+			dropped := a.droppedUpdates.Add(1)
+			if dropped == 1 || dropped%100 == 0 {
+				log.Printf("[acp] notification channel full, dropped %d updates (session=%s)", dropped, p.SessionID)
+			}
 		}
 	}
 }

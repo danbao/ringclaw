@@ -154,46 +154,14 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Start WebSocket monitor
 	log.Printf("Starting message bridge for chat %s...", cfg.RC.ChatID)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		runMonitorWithRestart(ctx, client, handler)
-	}()
-
-	wg.Wait()
+	// Monitor.Run handles reconnection with backoff internally
+	monitor := ringcentral.NewMonitor(client, handler.HandleMessage)
+	client.SetMonitor(monitor)
+	if err := monitor.Run(ctx); err != nil && ctx.Err() == nil {
+		log.Printf("[monitor] Monitor stopped unexpectedly: %v", err)
+	}
 	log.Println("Monitor stopped")
 	return nil
-}
-
-// runMonitorWithRestart runs a monitor with automatic restart on failure.
-func runMonitorWithRestart(ctx context.Context, client *ringcentral.Client, handler *messaging.Handler) {
-	const maxRestartDelay = 30 * time.Second
-	restartDelay := 3 * time.Second
-
-	for {
-		log.Printf("[monitor] Starting WebSocket monitor...")
-
-		monitor := ringcentral.NewMonitor(client, handler.HandleMessage)
-		client.SetMonitor(monitor)
-		err := monitor.Run(ctx)
-
-		if ctx.Err() != nil {
-			return
-		}
-
-		log.Printf("[monitor] Monitor stopped: %v, restarting in %s", err, restartDelay)
-		select {
-		case <-time.After(restartDelay):
-		case <-ctx.Done():
-			return
-		}
-
-		restartDelay *= 2
-		if restartDelay > maxRestartDelay {
-			restartDelay = maxRestartDelay
-		}
-	}
 }
 
 // createAgentByName creates and starts an agent by its config name.

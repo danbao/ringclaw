@@ -1,0 +1,127 @@
+package messaging
+
+import (
+	"testing"
+	"time"
+)
+
+func TestIsSummarizeCommand(t *testing.T) {
+	tests := []struct {
+		text string
+		want bool
+	}{
+		{"总结一下跟张三的聊天", true},
+		{"summarize last 3 days", true},
+		{"summary of this week", true},
+		{"hello world", false},
+		{"  总结 today", true},
+		{"SUMMARIZE chat", true},
+	}
+	for _, tt := range tests {
+		got := IsSummarizeCommand(tt.text)
+		if got != tt.want {
+			t.Errorf("IsSummarizeCommand(%q) = %v, want %v", tt.text, got, tt.want)
+		}
+	}
+}
+
+func TestParseTimeRange_LastNDays(t *testing.T) {
+	now := time.Now()
+	result := parseTimeRange("最近3天的消息")
+	diff := now.Sub(result)
+	if diff < 2*24*time.Hour || diff > 4*24*time.Hour {
+		t.Errorf("expected ~3 days ago, got %v ago", diff)
+	}
+}
+
+func TestParseTimeRange_LastNHours(t *testing.T) {
+	now := time.Now()
+	result := parseTimeRange("last 2 hours")
+	diff := now.Sub(result)
+	if diff < 1*time.Hour || diff > 3*time.Hour {
+		t.Errorf("expected ~2 hours ago, got %v ago", diff)
+	}
+}
+
+func TestParseTimeRange_ThisWeek(t *testing.T) {
+	result := parseTimeRange("本周的消息")
+	if result.Weekday() != time.Monday {
+		// Could be Sunday depending on locale, just check it's within this week
+		now := time.Now()
+		if now.Sub(result) > 7*24*time.Hour {
+			t.Errorf("expected within this week, got %v", result)
+		}
+	}
+}
+
+func TestParseTimeRange_Yesterday(t *testing.T) {
+	now := time.Now()
+	result := parseTimeRange("昨天的消息")
+	diff := now.Sub(result)
+	if diff < 12*time.Hour || diff > 48*time.Hour {
+		t.Errorf("expected ~1 day ago, got %v ago", diff)
+	}
+}
+
+func TestParseTimeRange_Default(t *testing.T) {
+	result := parseTimeRange("some random text")
+	today := todayStart()
+	if !result.Equal(today) {
+		t.Errorf("expected today start %v, got %v", today, result)
+	}
+}
+
+func TestExtractNameFromText(t *testing.T) {
+	tests := []struct {
+		text string
+		want string
+	}{
+		{"总结一下跟张三的聊天", "张三"},
+		{"summarize chat with John", "john"},
+	}
+	for _, tt := range tests {
+		got := extractNameFromText(tt.text)
+		if got != tt.want {
+			t.Errorf("extractNameFromText(%q) = %q, want %q", tt.text, got, tt.want)
+		}
+	}
+}
+
+func TestFuzzyMatch(t *testing.T) {
+	tests := []struct {
+		haystack string
+		needle   string
+		want     bool
+	}{
+		{"John Smith", "john", true},
+		{"John Smith", "smith", true},
+		{"张三", "张三", true},
+		{"hello", "world", false},
+		{"hello", "", false},
+	}
+	for _, tt := range tests {
+		got := fuzzyMatch(tt.haystack, tt.needle)
+		if got != tt.want {
+			t.Errorf("fuzzyMatch(%q, %q) = %v, want %v", tt.haystack, tt.needle, got, tt.want)
+		}
+	}
+}
+
+func TestFormatTimeDesc(t *testing.T) {
+	today := todayStart()
+	if got := formatTimeDesc(today); got != "today" {
+		t.Errorf("formatTimeDesc(today) = %q, want %q", got, "today")
+	}
+
+	yesterday := time.Now().Add(-36 * time.Hour)
+	got := formatTimeDesc(yesterday)
+	if got != "since yesterday" {
+		t.Errorf("formatTimeDesc(yesterday) = %q, want %q", got, "since yesterday")
+	}
+
+	threeDaysAgo := time.Now().Add(-72 * time.Hour)
+	got = formatTimeDesc(threeDaysAgo)
+	if got != "last 3 days" {
+		t.Errorf("formatTimeDesc(3 days ago) = %q, want %q", got, "last 3 days")
+	}
+}

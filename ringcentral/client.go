@@ -49,10 +49,17 @@ func NewClient(creds *Credentials) *Client {
 	}
 	auth := NewAuth(creds.ClientID, creds.ClientSecret, creds.JWTToken, serverURL)
 	return &Client{
-		serverURL:  serverURL,
-		chatID:     creds.ChatID,
-		auth:       auth,
-		httpClient: &http.Client{},
+		serverURL: serverURL,
+		chatID:    creds.ChatID,
+		auth:      auth,
+		httpClient: &http.Client{
+			Timeout: requestTimeout,
+			Transport: &http.Transport{
+				MaxIdleConns:        20,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+			},
+		},
 	}
 }
 

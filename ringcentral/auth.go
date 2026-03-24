@@ -23,6 +23,7 @@ type Auth struct {
 	accessToken string
 	expiresAt   time.Time
 	httpClient  *http.Client
+	refreshMu   sync.Mutex // prevents thundering herd on concurrent token refresh
 }
 
 // NewAuth creates a new Auth manager.
@@ -45,10 +46,25 @@ func (a *Auth) Authenticate() error {
 }
 
 // AccessToken returns a valid access token, refreshing if needed.
+// Uses refreshMu to prevent thundering herd when multiple goroutines
+// detect an expired token simultaneously.
 func (a *Auth) AccessToken() (string, error) {
 	a.mu.RLock()
 	token := a.accessToken
 	expires := a.expiresAt
+	a.mu.RUnlock()
+
+	if token != "" && time.Now().Before(expires.Add(-60*time.Second)) {
+		return token, nil
+	}
+
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+
+	// Double-check after acquiring lock: another goroutine may have refreshed already
+	a.mu.RLock()
+	token = a.accessToken
+	expires = a.expiresAt
 	a.mu.RUnlock()
 
 	if token != "" && time.Now().Before(expires.Add(-60*time.Second)) {

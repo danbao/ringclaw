@@ -396,6 +396,8 @@ func todayStart() time.Time {
 var (
 	reLastNDays  = regexp.MustCompile(`(?:最近|过去|last)\s*(\d+)\s*(?:天|days?)`)
 	reLastNHours = regexp.MustCompile(`(?:最近|过去|last)\s*(\d+)\s*(?:小时|个小时|hours?)`)
+	reDigits     = regexp.MustCompile(`\d+`)
+	rePunctSpace = regexp.MustCompile(`[，。！？,\.!\?\s]+`)
 )
 
 func parseTimeRange(text string) time.Time {
@@ -472,9 +474,9 @@ func extractNameFromText(text string) string {
 		clean = strings.ReplaceAll(clean, kw, "")
 	}
 	// Remove digits
-	clean = regexp.MustCompile(`\d+`).ReplaceAllString(clean, "")
+	clean = reDigits.ReplaceAllString(clean, "")
 	// Remove punctuation and collapse whitespace
-	clean = regexp.MustCompile(`[，。！？,\.!\?\s]+`).ReplaceAllString(clean, " ")
+	clean = rePunctSpace.ReplaceAllString(clean, " ")
 	// Remove remaining time units
 	for _, kw := range []string{"天", "小时", "个", "hours", "days"} {
 		clean = strings.ReplaceAll(clean, kw, "")

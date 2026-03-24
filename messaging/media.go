@@ -14,6 +14,8 @@ import (
 	"github.com/ringclaw/ringclaw/ringcentral"
 )
 
+var mediaHTTPClient = &http.Client{Timeout: 60 * time.Second}
+
 // reMarkdownImage matches markdown image syntax: ![alt](url)
 var reMarkdownImage = regexp.MustCompile(`!\[[^\]]*\]\(([^)]+)\)`)
 
@@ -58,7 +60,7 @@ func downloadFile(ctx context.Context, url string) ([]byte, string, error) {
 		return nil, "", err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := mediaHTTPClient.Do(req)
 	if err != nil {
 		return nil, "", err
 	}

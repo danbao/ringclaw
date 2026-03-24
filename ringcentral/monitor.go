@@ -40,16 +40,18 @@ const sentPostTTL = 5 * time.Minute
 func (m *Monitor) MarkSentPost(id string) {
 	m.mu.Lock()
 	m.sentPosts[id] = time.Now()
-	// Evict expired entries
-	if len(m.sentPosts) > 100 {
-		now := time.Now()
-		for k, t := range m.sentPosts {
-			if now.Sub(t) > sentPostTTL {
-				delete(m.sentPosts, k)
-			}
+	m.evictExpiredLocked()
+	m.mu.Unlock()
+}
+
+// evictExpiredLocked removes expired entries from sentPosts. Must hold m.mu.
+func (m *Monitor) evictExpiredLocked() {
+	now := time.Now()
+	for k, t := range m.sentPosts {
+		if now.Sub(t) > sentPostTTL {
+			delete(m.sentPosts, k)
 		}
 	}
-	m.mu.Unlock()
 }
 
 // IsSentPost checks if a post was recently sent by the bot.
@@ -76,7 +78,8 @@ func NewMonitor(client *Client, handler MessageHandler) *Monitor {
 	}
 }
 
-// Run starts the WebSocket event loop. Blocks until ctx is cancelled.
+// Run starts the WebSocket event loop with automatic reconnection.
+// Blocks until ctx is cancelled.
 func (m *Monitor) Run(ctx context.Context) error {
 	log.Println("[monitor] starting WebSocket event loop")
 
@@ -95,8 +98,8 @@ func (m *Monitor) Run(ctx context.Context) error {
 
 		m.failures++
 		backoff := m.calcBackoff()
-		log.Printf("[monitor] WebSocket disconnected (%d/%d, backoff=%s): %v",
-			m.failures, maxConsecutiveFailures, backoff, err)
+		log.Printf("[monitor] WebSocket disconnected (failures=%d, backoff=%s): %v",
+			m.failures, backoff, err)
 
 		select {
 		case <-time.After(backoff):
