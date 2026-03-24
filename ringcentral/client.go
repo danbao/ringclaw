@@ -216,6 +216,52 @@ func (c *Client) ListChats(ctx context.Context, chatType string) (*ChatList, err
 	return &list, nil
 }
 
+// SearchDirectory searches the company directory by name or email.
+func (c *Client) SearchDirectory(ctx context.Context, searchString string) (*DirectorySearchResult, error) {
+	body := map[string]string{"searchString": searchString}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal search body: %w", err)
+	}
+
+	path := "/restapi/v1.0/account/~/directory/entries/search"
+	respBody, err := c.doRequest(ctx, http.MethodPost, path, "application/json", bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	var result DirectorySearchResult
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parse directory search: %w", err)
+	}
+	return &result, nil
+}
+
+// CreateConversation creates or finds an existing Direct chat with the given members.
+// If a conversation already exists with those members, it is returned (idempotent).
+func (c *Client) CreateConversation(ctx context.Context, memberIDs []string) (*Chat, error) {
+	members := make([]ChatMember, len(memberIDs))
+	for i, id := range memberIDs {
+		members[i] = ChatMember{ID: id}
+	}
+	body := CreateChatRequest{Members: members}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal create chat: %w", err)
+	}
+
+	respBody, err := c.doRequest(ctx, http.MethodPost, "/team-messaging/v1/chats", "application/json", bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	var chat Chat
+	if err := json.Unmarshal(respBody, &chat); err != nil {
+		return nil, fmt.Errorf("parse create chat: %w", err)
+	}
+	return &chat, nil
+}
+
 // GetExtensionInfo fetches current user's extension info to get the owner ID.
 func (c *Client) GetExtensionInfo(ctx context.Context) (string, error) {
 	respBody, err := c.doRequest(ctx, http.MethodGet, "/restapi/v1.0/account/~/extension/~", "", nil)

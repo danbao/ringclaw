@@ -172,6 +172,24 @@ func (c Chat) MemberIDs() []string {
 	return ids
 }
 
+// DirectoryEntry represents a user in the company directory.
+type DirectoryEntry struct {
+	ID        string `json:"id"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	Email     string `json:"email"`
+}
+
+// DirectorySearchResult is the response from searching directory entries.
+type DirectorySearchResult struct {
+	Records []DirectoryEntry `json:"records"`
+}
+
+// CreateChatRequest is the body for creating/finding a conversation.
+type CreateChatRequest struct {
+	Members []ChatMember `json:"members"`
+}
+
 // Credentials stores RC session data.
 type Credentials struct {
 	ClientID     string `json:"client_id"`

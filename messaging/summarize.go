@@ -62,7 +62,7 @@ func cacheFilePath() string {
 	return filepath.Join(home, ".ringclaw", "chat_cache.json")
 }
 
-func (c *chatCache) ensureLoaded(ctx context.Context, client *ringcentral.Client) {
+func (c *chatCache) ensureLoaded() {
 	c.mu.RLock()
 	loaded := c.loaded
 	c.mu.RUnlock()
@@ -70,12 +70,15 @@ func (c *chatCache) ensureLoaded(ctx context.Context, client *ringcentral.Client
 		return
 	}
 	c.loadFromDisk()
-	c.mu.RLock()
-	loaded = c.loaded
-	c.mu.RUnlock()
-	if !loaded {
-		c.load(ctx, client)
-	}
+}
+
+// addEntry adds a new cache entry and persists to disk.
+func (c *chatCache) addEntry(entry chatCacheEntry) {
+	c.mu.Lock()
+	c.entries = append(c.entries, entry)
+	c.loaded = true
+	c.mu.Unlock()
+	c.saveToDisk()
 }
 
 // loadFromDisk reads the Direct chat cache from disk.
@@ -179,47 +182,59 @@ func (c *chatCache) getPerson(ctx context.Context, client *ringcentral.Client, p
 	return person
 }
 
-// load fetches Direct chats from the API and populates the cache.
-func (c *chatCache) load(ctx context.Context, client *ringcentral.Client) {
-	log.Println("[summarize] loading Direct chat cache from API...")
-	ownerID := client.OwnerID()
-
-	chats, err := client.ListChats(ctx, "Direct")
+// lookupViaDirectory searches the company directory and creates/finds the Direct chat.
+func (c *chatCache) lookupViaDirectory(ctx context.Context, client *ringcentral.Client, name string) *chatCacheEntry {
+	log.Printf("[summarize] searching company directory for %q", name)
+	result, err := client.SearchDirectory(ctx, name)
 	if err != nil {
-		log.Printf("[summarize] failed to list Direct chats: %v", err)
-		return
+		log.Printf("[summarize] directory search failed: %v", err)
+		return nil
+	}
+	if len(result.Records) == 0 {
+		log.Printf("[summarize] no directory entries found for %q", name)
+		return nil
 	}
 
-	var entries []chatCacheEntry
-	for _, chat := range chats.Records {
-		name := chat.Name
-		if name == "" {
-			for _, m := range chat.Members {
-				if m.ID == ownerID || strings.HasPrefix(m.ID, "glip-") {
-					continue
-				}
-				person := c.getPerson(ctx, client, m.ID)
-				if person != nil {
-					name = strings.TrimSpace(person.FirstName + " " + person.LastName)
-				}
-				break
-			}
+	// Pick best match
+	var best *ringcentral.DirectoryEntry
+	for i := range result.Records {
+		e := &result.Records[i]
+		fullName := strings.TrimSpace(e.FirstName + " " + e.LastName)
+		if fuzzyMatch(fullName, name) || fuzzyMatch(e.Email, name) {
+			best = e
+			break
 		}
-		if name == "" {
-			continue
-		}
-		entries = append(entries, chatCacheEntry{
-			ChatID: chat.ID, ChatName: name, ChatType: "Direct",
-		})
+	}
+	if best == nil {
+		log.Printf("[summarize] directory returned %d entries but none matched %q", len(result.Records), name)
+		return nil
 	}
 
+	fullName := strings.TrimSpace(best.FirstName + " " + best.LastName)
+	log.Printf("[summarize] directory matched: %q (id=%s, email=%s)", fullName, best.ID, best.Email)
+
+	// Create or find Direct chat
+	chat, err := client.CreateConversation(ctx, []string{best.ID})
+	if err != nil {
+		log.Printf("[summarize] create conversation failed: %v", err)
+		return nil
+	}
+
+	log.Printf("[summarize] resolved Direct chat: %q -> %s", fullName, chat.ID)
+
+	// Cache person info
 	c.mu.Lock()
-	c.entries = entries
-	c.loaded = true
+	c.persons[best.ID] = &ringcentral.PersonInfo{
+		ID:        best.ID,
+		FirstName: best.FirstName,
+		LastName:  best.LastName,
+		Email:     best.Email,
+	}
 	c.mu.Unlock()
 
-	log.Printf("[summarize] cached %d Direct chats", len(entries))
-	c.saveToDisk()
+	entry := chatCacheEntry{ChatID: chat.ID, ChatName: fullName, ChatType: "Direct"}
+	c.addEntry(entry)
+	return &entry
 }
 
 // IsSummarizeCommand checks if the text starts with a summarize keyword.
@@ -274,12 +289,12 @@ func ResolveChatTarget(ctx context.Context, client *ringcentral.Client, text str
 		return nil, fmt.Errorf("cannot determine which chat to summarize. Use a mention or specify a name")
 	}
 
-	log.Printf("[summarize] fuzzy searching Direct chats for %q", name)
+	log.Printf("[summarize] looking up %q", name)
 
-	// Ensure Direct cache is loaded (from disk or API)
-	globalChatCache.ensureLoaded(ctx, client)
+	// Load cache from disk if not yet loaded
+	globalChatCache.ensureLoaded()
 
-	// Search cache
+	// Search local cache first
 	if entry := globalChatCache.lookup(name); entry != nil {
 		req.ChatID = entry.ChatID
 		req.ChatName = entry.ChatName
@@ -287,18 +302,14 @@ func ResolveChatTarget(ctx context.Context, client *ringcentral.Client, text str
 		return req, nil
 	}
 
-	// Cache miss: force refresh from API and retry once
-	log.Printf("[summarize] cache miss for %q, refreshing from API...", name)
-	globalChatCache.load(ctx, client)
-
-	if entry := globalChatCache.lookup(name); entry != nil {
+	// Cache miss: search company directory -> create/find conversation -> cache result
+	if entry := globalChatCache.lookupViaDirectory(ctx, client, name); entry != nil {
 		req.ChatID = entry.ChatID
 		req.ChatName = entry.ChatName
-		log.Printf("[summarize] matched after refresh: %q (id=%s)", entry.ChatName, entry.ChatID)
 		return req, nil
 	}
 
-	return nil, fmt.Errorf("could not find a Direct chat matching %q. For group chats, use mention format: ![:Team](id)", name)
+	return nil, fmt.Errorf("could not find a chat matching %q. For group chats, use mention format: ![:Team](id)", name)
 }
 
 // BuildSummaryPrompt fetches chat messages and builds a prompt for the agent.
