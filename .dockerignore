@@ -1,0 +1,13 @@
+weclaw
+tmp/
+.git/
+.idea/
+.vscode/
+.claude/
+.env
+*.local
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

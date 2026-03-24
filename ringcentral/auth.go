@@ -1,0 +1,142 @@
+package ringcentral
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Auth manages OAuth token lifecycle using JWT grant type.
+type Auth struct {
+	clientID     string
+	clientSecret string
+	jwtToken     string
+	serverURL    string
+
+	mu          sync.RWMutex
+	accessToken string
+	expiresAt   time.Time
+	httpClient  *http.Client
+}
+
+// NewAuth creates a new Auth manager.
+func NewAuth(clientID, clientSecret, jwtToken, serverURL string) *Auth {
+	if serverURL == "" {
+		serverURL = defaultServerURL
+	}
+	return &Auth{
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		jwtToken:     jwtToken,
+		serverURL:    serverURL,
+		httpClient:   &http.Client{Timeout: 15 * time.Second},
+	}
+}
+
+// Authenticate performs initial JWT authentication.
+func (a *Auth) Authenticate() error {
+	return a.refreshToken()
+}
+
+// AccessToken returns a valid access token, refreshing if needed.
+func (a *Auth) AccessToken() (string, error) {
+	a.mu.RLock()
+	token := a.accessToken
+	expires := a.expiresAt
+	a.mu.RUnlock()
+
+	if token != "" && time.Now().Before(expires.Add(-60*time.Second)) {
+		return token, nil
+	}
+
+	if err := a.refreshToken(); err != nil {
+		return "", err
+	}
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.accessToken, nil
+}
+
+func (a *Auth) refreshToken() error {
+	data := url.Values{
+		"grant_type": {"urn:ietf:params:oauth:grant-type:jwt-bearer"},
+		"assertion":  {a.jwtToken},
+	}
+
+	req, err := http.NewRequest(http.MethodPost, a.serverURL+"/restapi/oauth/token", strings.NewReader(data.Encode()))
+	if err != nil {
+		return fmt.Errorf("create token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString(
+		[]byte(a.clientID+":"+a.clientSecret)))
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("token request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read token response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("token request failed HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp TokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return fmt.Errorf("parse token response: %w", err)
+	}
+
+	a.mu.Lock()
+	a.accessToken = tokenResp.AccessToken
+	a.expiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+	a.mu.Unlock()
+
+	return nil
+}
+
+// GetWSToken obtains a single-use WebSocket access token.
+func (a *Auth) GetWSToken() (*WSTokenResponse, error) {
+	token, err := a.AccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, a.serverURL+"/restapi/oauth/wstoken", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create wstoken request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("wstoken request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read wstoken response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("wstoken request failed HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var wsResp WSTokenResponse
+	if err := json.Unmarshal(body, &wsResp); err != nil {
+		return nil, fmt.Errorf("parse wstoken response: %w", err)
+	}
+	return &wsResp, nil
+}

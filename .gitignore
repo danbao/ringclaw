@@ -1,0 +1,23 @@
+# Binary
+weclaw
+
+# Air hot reload
+tmp/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment & config
+.env
+*.local
+
+# Claude Code
+.claude/

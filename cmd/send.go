@@ -1,0 +1,89 @@
+package cmd
+
+import (
+	"context"
+	"fmt"
+	"os/signal"
+	"syscall"
+
+	"github.com/danbao/ringclaw/config"
+	"github.com/danbao/ringclaw/messaging"
+	"github.com/danbao/ringclaw/ringcentral"
+	"github.com/spf13/cobra"
+)
+
+var (
+	sendTo       string
+	sendText     string
+	sendMediaURL string
+)
+
+func init() {
+	sendCmd.Flags().StringVar(&sendTo, "to", "", "Target chat ID (overrides config)")
+	sendCmd.Flags().StringVar(&sendText, "text", "", "Message text to send")
+	sendCmd.Flags().StringVar(&sendMediaURL, "media", "", "Media URL to send (image/video/file)")
+	rootCmd.AddCommand(sendCmd)
+}
+
+var sendCmd = &cobra.Command{
+	Use:   "send",
+	Short: "Send a message to a RingCentral chat",
+	Example: `  weclaw send --text "Hello"
+  weclaw send --to "chatId" --text "Hello"
+  weclaw send --media "https://example.com/image.png"
+  weclaw send --text "See this" --media "https://example.com/image.png"`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if sendText == "" && sendMediaURL == "" {
+			return fmt.Errorf("at least one of --text or --media is required")
+		}
+
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+
+		if cfg.RC.ClientID == "" || cfg.RC.ClientSecret == "" || cfg.RC.JWTToken == "" {
+			return fmt.Errorf("RingCentral credentials not configured")
+		}
+
+		chatID := sendTo
+		if chatID == "" {
+			chatID = cfg.RC.ChatID
+		}
+		if chatID == "" {
+			return fmt.Errorf("no chat ID specified. Use --to or set RC_CHAT_ID")
+		}
+
+		creds := &ringcentral.Credentials{
+			ClientID:     cfg.RC.ClientID,
+			ClientSecret: cfg.RC.ClientSecret,
+			JWTToken:     cfg.RC.JWTToken,
+			ChatID:       chatID,
+			ServerURL:    cfg.RC.ServerURL,
+		}
+		client := ringcentral.NewClient(creds)
+
+		if err := client.Authenticate(); err != nil {
+			return fmt.Errorf("authentication failed: %w", err)
+		}
+
+		if sendText != "" {
+			if err := messaging.SendTextReply(ctx, client, chatID, sendText); err != nil {
+				return fmt.Errorf("send text failed: %w", err)
+			}
+			fmt.Println("Text sent")
+		}
+
+		if sendMediaURL != "" {
+			if err := messaging.SendMediaFromURL(ctx, client, chatID, sendMediaURL); err != nil {
+				return fmt.Errorf("send media failed: %w", err)
+			}
+			fmt.Println("Media sent")
+		}
+
+		return nil
+	},
+}
