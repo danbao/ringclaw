@@ -262,21 +262,6 @@ func (c *Client) CreateConversation(ctx context.Context, memberIDs []string) (*C
 	return &chat, nil
 }
 
-// FindDirectChatByMember searches Direct chats for one containing the given member ID.
-func (c *Client) FindDirectChatByMember(ctx context.Context, memberID string) (*Chat, error) {
-	chats, err := c.ListChats(ctx, "Direct")
-	if err != nil {
-		return nil, err
-	}
-	for _, chat := range chats.Records {
-		for _, m := range chat.Members {
-			if m.ID == memberID {
-				return &chat, nil
-			}
-		}
-	}
-	return nil, fmt.Errorf("no Direct chat found with member %s", memberID)
-}
 
 // GetExtensionInfo fetches current user's extension info to get the owner ID.
 func (c *Client) GetExtensionInfo(ctx context.Context) (string, error) {
