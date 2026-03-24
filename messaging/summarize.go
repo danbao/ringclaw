@@ -35,23 +35,27 @@ type cachedPerson struct {
 
 // persistentCacheData is the on-disk format for ~/.ringclaw/chat_cache.json.
 type persistentCacheData struct {
-	Entries  []chatCacheEntry    `json:"entries"`
-	Persons  map[string]cachedPerson `json:"persons"`
-	SavedAt  time.Time           `json:"saved_at"`
+	Entries      []chatCacheEntry       `json:"entries"`
+	Persons      map[string]cachedPerson `json:"persons"`
+	SavedAt      time.Time              `json:"saved_at"`
+	GroupSavedAt time.Time              `json:"group_saved_at"` // last refresh of Team/Group entries
 }
 
 // chatCache caches chat lookups to avoid repeated API calls.
+// Direct chats are cached indefinitely (stable IDs).
+// Team/Group chats refresh every groupTTL.
 type chatCache struct {
-	mu        sync.RWMutex
-	entries   []chatCacheEntry
-	persons   map[string]*ringcentral.PersonInfo // personID -> info
-	loadedAt  time.Time
-	ttl       time.Duration
+	mu           sync.RWMutex
+	entries      []chatCacheEntry
+	persons      map[string]*ringcentral.PersonInfo
+	loadedAt     time.Time // when Direct entries were last loaded
+	groupLoadedAt time.Time // when Team/Group entries were last loaded
+	groupTTL     time.Duration
 }
 
 var globalChatCache = &chatCache{
-	persons: make(map[string]*ringcentral.PersonInfo),
-	ttl:     10 * time.Minute,
+	persons:  make(map[string]*ringcentral.PersonInfo),
+	groupTTL: 10 * time.Minute,
 }
 
 func cacheFilePath() string {
@@ -64,17 +68,19 @@ func cacheFilePath() string {
 
 func (c *chatCache) isStale() bool {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.entries == nil {
-		// Try loading from disk first
-		c.mu.RUnlock()
+	empty := c.entries == nil
+	c.mu.RUnlock()
+	if empty {
 		c.loadFromDisk()
-		c.mu.RLock()
 	}
-	return c.entries == nil || time.Since(c.loadedAt) > c.ttl
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	// Direct entries never expire; only Team/Group need refresh
+	return c.entries == nil || time.Since(c.groupLoadedAt) > c.groupTTL
 }
 
-// loadFromDisk reads the cache file if it exists and is fresh.
+// loadFromDisk reads the cache file.
+// Direct entries are always loaded (stable). Team/Group only if within TTL.
 func (c *chatCache) loadFromDisk() {
 	path := cacheFilePath()
 	if path == "" {
@@ -89,14 +95,20 @@ func (c *chatCache) loadFromDisk() {
 		log.Printf("[summarize] failed to parse cache file: %v", err)
 		return
 	}
-	// Only use if not too old
-	if time.Since(pd.SavedAt) > c.ttl {
-		return
-	}
 
 	c.mu.Lock()
-	c.entries = pd.Entries
+	// Always load Direct entries (stable) and persons
+	c.entries = nil
+	groupFresh := pd.GroupSavedAt.IsZero() == false && time.Since(pd.GroupSavedAt) <= c.groupTTL
+	for _, e := range pd.Entries {
+		if e.ChatType == "Direct" || groupFresh {
+			c.entries = append(c.entries, e)
+		}
+	}
 	c.loadedAt = pd.SavedAt
+	if groupFresh {
+		c.groupLoadedAt = pd.GroupSavedAt
+	}
 	for id, cp := range pd.Persons {
 		c.persons[id] = &ringcentral.PersonInfo{
 			ID:        cp.ID,
@@ -106,7 +118,15 @@ func (c *chatCache) loadFromDisk() {
 		}
 	}
 	c.mu.Unlock()
-	log.Printf("[summarize] loaded cache from disk: %d chats, %d persons", len(pd.Entries), len(pd.Persons))
+
+	directCount := 0
+	for _, e := range c.entries {
+		if e.ChatType == "Direct" {
+			directCount++
+		}
+	}
+	log.Printf("[summarize] loaded cache from disk: %d entries (%d direct), %d persons, groups fresh: %v",
+		len(c.entries), directCount, len(pd.Persons), groupFresh)
 }
 
 // saveToDisk writes the cache to disk.
@@ -117,9 +137,10 @@ func (c *chatCache) saveToDisk() {
 	}
 	c.mu.RLock()
 	pd := persistentCacheData{
-		Entries: c.entries,
-		Persons: make(map[string]cachedPerson, len(c.persons)),
-		SavedAt: c.loadedAt,
+		Entries:      c.entries,
+		Persons:      make(map[string]cachedPerson, len(c.persons)),
+		SavedAt:      c.loadedAt,
+		GroupSavedAt: c.groupLoadedAt,
 	}
 	for id, p := range c.persons {
 		pd.Persons[id] = cachedPerson{
@@ -178,53 +199,91 @@ func (c *chatCache) getPerson(ctx context.Context, client *ringcentral.Client, p
 	return person
 }
 
-// load fetches all chats and builds the cache.
+// load refreshes the cache. Direct entries are only fetched if missing;
+// Team/Group entries are always refreshed.
 func (c *chatCache) load(ctx context.Context, client *ringcentral.Client) {
-	log.Println("[summarize] loading chat cache...")
-	var entries []chatCacheEntry
+	log.Println("[summarize] refreshing chat cache...")
 	ownerID := client.OwnerID()
+	now := time.Now()
 
-	for _, chatType := range []string{"Direct", "Team", "Group"} {
+	c.mu.RLock()
+	hasDirects := false
+	for _, e := range c.entries {
+		if e.ChatType == "Direct" {
+			hasDirects = true
+			break
+		}
+	}
+	c.mu.RUnlock()
+
+	// Keep existing Direct entries; only fetch from API if none cached
+	var newEntries []chatCacheEntry
+	if hasDirects {
+		c.mu.RLock()
+		for _, e := range c.entries {
+			if e.ChatType == "Direct" {
+				newEntries = append(newEntries, e)
+			}
+		}
+		c.mu.RUnlock()
+		log.Printf("[summarize] reusing %d cached Direct entries", len(newEntries))
+	} else {
+		chats, err := client.ListChats(ctx, "Direct")
+		if err != nil {
+			log.Printf("[summarize] failed to list Direct chats: %v", err)
+		} else {
+			for _, chat := range chats.Records {
+				name := chat.Name
+				if name == "" {
+					for _, m := range chat.Members {
+						if m.ID == ownerID || strings.HasPrefix(m.ID, "glip-") {
+							continue
+						}
+						person := c.getPerson(ctx, client, m.ID)
+						if person != nil {
+							name = strings.TrimSpace(person.FirstName + " " + person.LastName)
+						}
+						break
+					}
+				}
+				if name == "" {
+					continue
+				}
+				newEntries = append(newEntries, chatCacheEntry{
+					ChatID: chat.ID, ChatName: name, ChatType: "Direct",
+				})
+			}
+			log.Printf("[summarize] loaded %d Direct chats from API", len(newEntries))
+		}
+	}
+
+	// Always refresh Team/Group
+	for _, chatType := range []string{"Team", "Group"} {
 		chats, err := client.ListChats(ctx, chatType)
 		if err != nil {
 			log.Printf("[summarize] failed to list %s chats: %v", chatType, err)
 			continue
 		}
-
+		count := 0
 		for _, chat := range chats.Records {
-			name := chat.Name
-			// Direct chats may have empty Name; resolve from member
-			if name == "" && chatType == "Direct" {
-				for _, m := range chat.Members {
-					if m.ID == ownerID || strings.HasPrefix(m.ID, "glip-") {
-						continue
-					}
-					person := c.getPerson(ctx, client, m.ID)
-					if person != nil {
-						name = strings.TrimSpace(person.FirstName + " " + person.LastName)
-					}
-					break
-				}
-			}
-			if name == "" {
+			if chat.Name == "" {
 				continue
 			}
-			entries = append(entries, chatCacheEntry{
-				ChatID:   chat.ID,
-				ChatName: name,
-				ChatType: chatType,
+			newEntries = append(newEntries, chatCacheEntry{
+				ChatID: chat.ID, ChatName: chat.Name, ChatType: chatType,
 			})
+			count++
 		}
+		log.Printf("[summarize] loaded %d %s chats from API", count, chatType)
 	}
 
 	c.mu.Lock()
-	c.entries = entries
-	c.loadedAt = time.Now()
+	c.entries = newEntries
+	c.loadedAt = now
+	c.groupLoadedAt = now
 	c.mu.Unlock()
 
-	log.Printf("[summarize] chat cache loaded: %d entries", len(entries))
-
-	// Persist to disk
+	log.Printf("[summarize] chat cache ready: %d total entries", len(newEntries))
 	c.saveToDisk()
 }
 
