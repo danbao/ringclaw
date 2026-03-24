@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -34,14 +35,18 @@ type Handler struct {
 	agentMetas  []AgentMeta            // all configured agents (for /status)
 	factory     AgentFactory
 	saveDefault SaveDefaultFunc
+	version     string
+	startTime   time.Time
 }
 
 // NewHandler creates a new message handler.
-func NewHandler(factory AgentFactory, saveDefault SaveDefaultFunc) *Handler {
+func NewHandler(factory AgentFactory, saveDefault SaveDefaultFunc, version string) *Handler {
 	return &Handler{
 		agents:      make(map[string]agent.Agent),
 		factory:     factory,
 		saveDefault: saveDefault,
+		version:     version,
+		startTime:   time.Now(),
 	}
 }
 
@@ -304,17 +309,73 @@ func (h *Handler) buildStatus() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
+	var b strings.Builder
+
+	// System info
+	b.WriteString(fmt.Sprintf("ringclaw %s (%s/%s)\n", h.version, runtime.GOOS, runtime.GOARCH))
+	b.WriteString(fmt.Sprintf("uptime: %s\n", formatDuration(time.Since(h.startTime))))
+	b.WriteString(fmt.Sprintf("go: %s\n", runtime.Version()))
+	b.WriteString("\n")
+
+	// Default agent
 	if h.defaultName == "" {
-		return "agent: none (echo mode)"
+		b.WriteString("default agent: none (echo mode)\n")
+	} else if ag, ok := h.agents[h.defaultName]; !ok {
+		b.WriteString(fmt.Sprintf("default agent: %s (not started)\n", h.defaultName))
+	} else {
+		info := ag.Info()
+		b.WriteString(fmt.Sprintf("default agent: %s\n", h.defaultName))
+		b.WriteString(fmt.Sprintf("  type: %s\n", info.Type))
+		if info.Model != "" {
+			b.WriteString(fmt.Sprintf("  model: %s\n", info.Model))
+		}
+		if info.PID > 0 {
+			b.WriteString(fmt.Sprintf("  pid: %d\n", info.PID))
+		}
 	}
 
-	ag, ok := h.agents[h.defaultName]
-	if !ok {
-		return fmt.Sprintf("agent: %s (not started)", h.defaultName)
+	// Active sessions
+	activeSessions := 0
+	for range h.agents {
+		activeSessions++
+	}
+	b.WriteString(fmt.Sprintf("\nactive sessions: %d\n", activeSessions))
+
+	// All available agents
+	if len(h.agentMetas) > 0 {
+		b.WriteString("\navailable agents:\n")
+		for _, m := range h.agentMetas {
+			marker := " "
+			if m.Name == h.defaultName {
+				marker = "*"
+			}
+			model := m.Model
+			if model == "" {
+				model = "-"
+			}
+			b.WriteString(fmt.Sprintf("  %s %-12s  type=%-4s  model=%s\n", marker, m.Name, m.Type, model))
+		}
 	}
 
-	info := ag.Info()
-	return fmt.Sprintf("agent: %s\ntype: %s\nmodel: %s", h.defaultName, info.Type, info.Model)
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	mins := int(d.Minutes()) % 60
+	secs := int(d.Seconds()) % 60
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, mins)
+	}
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm %ds", hours, mins, secs)
+	}
+	if mins > 0 {
+		return fmt.Sprintf("%dm %ds", mins, secs)
+	}
+	return fmt.Sprintf("%ds", secs)
 }
 
 func buildHelpText() string {
