@@ -1,6 +1,9 @@
 package ringcentral
 
 import (
+	"context"
+	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 )
@@ -75,6 +78,160 @@ func TestIsBotMessage(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("isBotMessage(%q) = %v, want %v", tt.text, got, tt.want)
 		}
+	}
+}
+
+func newTestMonitor(chatID string, handler MessageHandler) *Monitor {
+	creds := &Credentials{
+		ClientID:     "id",
+		ClientSecret: "secret",
+		JWTToken:     "jwt",
+		ChatID:       chatID,
+	}
+	client := NewClient(creds)
+	return NewMonitor(client, handler)
+}
+
+func makeWSMessage(post Post) []byte {
+	header := map[string]string{"type": "ServerNotification"}
+	event := WSEvent{
+		UUID:  "test-uuid",
+		Event: "/team-messaging/v1/posts",
+		Body:  post,
+	}
+	arr := []interface{}{header, event}
+	data, _ := json.Marshal(arr)
+	return data
+}
+
+func TestMonitor_HandleWSMessage_PostAdded(t *testing.T) {
+	var mu sync.Mutex
+	var received []Post
+
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+		mu.Lock()
+		received = append(received, post)
+		mu.Unlock()
+	})
+
+	msg := makeWSMessage(Post{
+		ID:        "p1",
+		GroupID:   "chat-1",
+		Type:      "TextMessage",
+		Text:      "hello from user",
+		CreatorID: "user-1",
+		EventType: "PostAdded",
+	})
+
+	m.handleWSMessage(context.Background(), msg)
+
+	// handler is called in a goroutine, wait briefly
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(received) != 1 {
+		t.Fatalf("expected 1 post dispatched, got %d", len(received))
+	}
+	if received[0].ID != "p1" {
+		t.Errorf("expected post ID p1, got %s", received[0].ID)
+	}
+}
+
+func TestMonitor_HandleWSMessage_IgnoreBotMessage(t *testing.T) {
+	var called bool
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+		called = true
+	})
+
+	// "Thinking..." is a bot marker
+	msg := makeWSMessage(Post{
+		ID:        "p2",
+		GroupID:   "chat-1",
+		Type:      "TextMessage",
+		Text:      "Thinking...",
+		CreatorID: "bot-1",
+		EventType: "PostAdded",
+	})
+
+	m.handleWSMessage(context.Background(), msg)
+	time.Sleep(50 * time.Millisecond)
+
+	if called {
+		t.Error("handler should not be called for bot messages")
+	}
+}
+
+func TestMonitor_HandleWSMessage_FilterByChatID(t *testing.T) {
+	var called bool
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+		called = true
+	})
+
+	// Message from a different chat
+	msg := makeWSMessage(Post{
+		ID:        "p3",
+		GroupID:   "chat-OTHER",
+		Type:      "TextMessage",
+		Text:      "hello",
+		CreatorID: "user-1",
+		EventType: "PostAdded",
+	})
+
+	m.handleWSMessage(context.Background(), msg)
+	time.Sleep(50 * time.Millisecond)
+
+	if called {
+		t.Error("handler should not be called for messages from other chats")
+	}
+}
+
+func TestMonitor_HandleWSMessage_IgnoreNonText(t *testing.T) {
+	var called bool
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+		called = true
+	})
+
+	msg := makeWSMessage(Post{
+		ID:        "p4",
+		GroupID:   "chat-1",
+		Type:      "PersonJoined",
+		Text:      "",
+		CreatorID: "user-1",
+		EventType: "PostAdded",
+	})
+
+	m.handleWSMessage(context.Background(), msg)
+	time.Sleep(50 * time.Millisecond)
+
+	if called {
+		t.Error("handler should not be called for non-text messages")
+	}
+}
+
+func TestMonitor_HandleWSMessage_IgnoreSentPost(t *testing.T) {
+	var called bool
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+		called = true
+	})
+
+	// Mark post as sent by bot
+	m.MarkSentPost("p5")
+
+	msg := makeWSMessage(Post{
+		ID:        "p5",
+		GroupID:   "chat-1",
+		Type:      "TextMessage",
+		Text:      "bot reply",
+		CreatorID: "bot-1",
+		EventType: "PostAdded",
+	})
+
+	m.handleWSMessage(context.Background(), msg)
+	time.Sleep(50 * time.Millisecond)
+
+	if called {
+		t.Error("handler should not be called for bot's own sent posts")
 	}
 }
 

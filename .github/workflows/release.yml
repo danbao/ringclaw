@@ -42,8 +42,15 @@ jobs:
         run: |
           EXT=""
           if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
-          go build -ldflags="-s -w -X github.com/ringclaw/ringclaw/cmd.Version=${{ github.ref_name }}" \
+          go build -trimpath -ldflags="-s -w -X github.com/ringclaw/ringclaw/cmd.Version=${{ github.ref_name }}" \
             -o ringclaw_${{ matrix.goos }}_${{ matrix.goarch }}${EXT} .
+
+      - name: Compress with UPX
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq upx-ucl
+          upx --best --lzma ringclaw_${{ matrix.goos }}_${{ matrix.goarch }}
+          echo "Compressed size: $(du -h ringclaw_${{ matrix.goos }}_${{ matrix.goarch }} | cut -f1)"
 
       - uses: actions/upload-artifact@v4
         with:

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"sync"
@@ -190,7 +190,7 @@ func (a *ACPAgent) Start(ctx context.Context) error {
 	}
 
 	pid := a.cmd.Process.Pid
-	log.Printf("[acp] started subprocess (command=%s, pid=%d)", a.command, pid)
+	slog.Info("started subprocess", "component", "acp", "command", a.command, "pid", pid)
 
 	a.scanner = bufio.NewScanner(stdout)
 	a.scanner.Buffer(make([]byte, 0, 4*1024*1024), 4*1024*1024) // 4MB
@@ -206,7 +206,7 @@ func (a *ACPAgent) Start(ctx context.Context) error {
 	initCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	log.Printf("[acp] sending initialize handshake (pid=%d)...", pid)
+	slog.Info("sending initialize handshake", "component", "acp", "pid", pid)
 	result, err := a.call(initCtx, "initialize", initParams{
 		ProtocolVersion: 1,
 		ClientCapabilities: clientCapabilities{
@@ -227,7 +227,7 @@ func (a *ACPAgent) Start(ctx context.Context) error {
 		return fmt.Errorf("agent startup failed (pid=%d): %w", pid, err)
 	}
 
-	log.Printf("[acp] initialized (pid=%d): %s", pid, string(result))
+	slog.Info("initialized", "component", "acp", "pid", pid, "result", string(result))
 	return nil
 }
 
@@ -261,9 +261,9 @@ func (a *ACPAgent) Chat(ctx context.Context, conversationID string, message stri
 
 	pid := a.cmd.Process.Pid
 	if isNew {
-		log.Printf("[acp] new session created (pid=%d, session=%s, conversation=%s)", pid, sessionID, conversationID)
+		slog.Info("new session created", "component", "acp", "pid", pid, "session", sessionID, "conversation", conversationID)
 	} else {
-		log.Printf("[acp] reusing session (pid=%d, session=%s, conversation=%s)", pid, sessionID, conversationID)
+		slog.Info("reusing session", "component", "acp", "pid", pid, "session", sessionID, "conversation", conversationID)
 	}
 
 	// Register notification channel for this session
@@ -290,7 +290,7 @@ func (a *ACPAgent) Chat(ctx context.Context, conversationID string, message stri
 			Prompt:    []promptEntry{{Type: "text", Text: message}},
 		})
 		if result != nil {
-			log.Printf("[acp] prompt result (session=%s): %s", sessionID, string(result))
+			slog.Debug("prompt result", "component", "acp", "session", sessionID, "result", string(result))
 		}
 		promptDone <- promptDoneMsg{result: result, err: err}
 	}()
@@ -435,7 +435,7 @@ func (a *ACPAgent) readLoop() {
 
 		var msg rpcResponse
 		if err := json.Unmarshal([]byte(line), &msg); err != nil {
-			log.Printf("[acp] failed to parse message: %v", err)
+			slog.Error("failed to parse message", "component", "acp", "error", err)
 			continue
 		}
 
@@ -461,15 +461,19 @@ func (a *ACPAgent) readLoop() {
 
 		default:
 			if msg.Method != "" {
-				log.Printf("[acp] unhandled method: %s (raw: %.200s)", msg.Method, line)
+				raw := line
+				if len(raw) > 200 {
+					raw = raw[:200]
+				}
+				slog.Debug("unhandled method", "component", "acp", "method", msg.Method, "raw", raw)
 			}
 		}
 	}
 
 	if err := a.scanner.Err(); err != nil {
-		log.Printf("[acp] read loop error: %v", err)
+		slog.Error("read loop error", "component", "acp", "error", err)
 	}
-	log.Println("[acp] read loop ended")
+	slog.Info("read loop ended", "component", "acp")
 
 	// Close all pending request channels so callers don't block forever
 	a.pendingMu.Lock()
@@ -488,12 +492,11 @@ func (a *ACPAgent) readLoop() {
 func (a *ACPAgent) handleSessionUpdate(params json.RawMessage) {
 	var p sessionUpdateParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		log.Printf("[acp] failed to parse session/update: %v (raw: %s)", err, string(params))
+		slog.Error("failed to parse session/update", "component", "acp", "error", err, "raw", string(params))
 		return
 	}
 
-	log.Printf("[acp] session/update (session=%s, type=%s, text_len=%d, content_len=%d)",
-		p.SessionID, p.Update.SessionUpdate, len(p.Update.Text), len(p.Update.Content))
+	slog.Debug("session/update", "component", "acp", "session", p.SessionID, "type", p.Update.SessionUpdate, "text_len", len(p.Update.Text), "content_len", len(p.Update.Content))
 
 	a.notifyMu.Lock()
 	ch, ok := a.notifyCh[p.SessionID]
@@ -505,7 +508,7 @@ func (a *ACPAgent) handleSessionUpdate(params json.RawMessage) {
 		default:
 			dropped := a.droppedUpdates.Add(1)
 			if dropped == 1 || dropped%100 == 0 {
-				log.Printf("[acp] notification channel full, dropped %d updates (session=%s)", dropped, p.SessionID)
+				slog.Warn("notification channel full", "component", "acp", "dropped", dropped, "session", p.SessionID)
 			}
 		}
 	}
@@ -518,7 +521,7 @@ func (a *ACPAgent) handlePermissionRequest(raw string) {
 		Params permissionRequestParams `json:"params"`
 	}
 	if err := json.Unmarshal([]byte(raw), &req); err != nil {
-		log.Printf("[acp] failed to parse permission request: %v", err)
+		slog.Error("failed to parse permission request", "component", "acp", "error", err)
 		return
 	}
 
@@ -545,7 +548,7 @@ func (a *ACPAgent) handlePermissionRequest(raw string) {
 
 	data, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("[acp] failed to marshal permission response: %v", err)
+		slog.Error("failed to marshal permission response", "component", "acp", "error", err)
 		return
 	}
 
@@ -553,7 +556,7 @@ func (a *ACPAgent) handlePermissionRequest(raw string) {
 	fmt.Fprintf(a.stdin, "%s\n", data)
 	a.mu.Unlock()
 
-	log.Printf("[acp] auto-allowed permission request")
+	slog.Info("auto-allowed permission request", "component", "acp")
 }
 
 // Info returns metadata about this agent.
@@ -638,7 +641,7 @@ func (w *acpStderrWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	for _, line := range lines {
 		if line != "" {
-			log.Printf("%s %s", w.prefix, line)
+			slog.Debug("subprocess stderr", "prefix", w.prefix, "line", line)
 			// Capture lines that look like actual error messages (not traceback frames)
 			if !strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "Traceback") && !strings.HasPrefix(line, "...") {
 				w.last = line

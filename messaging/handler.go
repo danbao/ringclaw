@@ -3,7 +3,7 @@ package messaging
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"runtime"
 	"strings"
 	"sync"
@@ -63,7 +63,7 @@ func (h *Handler) SetDefaultAgent(name string, ag agent.Agent) {
 	defer h.mu.Unlock()
 	h.defaultName = name
 	h.agents[name] = ag
-	log.Printf("[handler] default agent ready: %s (%s)", name, ag.Info())
+	slog.Info("default agent ready", "component", "handler", "name", name, "info", ag.Info())
 }
 
 // getAgent returns a running agent by name, or starts it on demand via factory.
@@ -86,14 +86,14 @@ func (h *Handler) getAgent(ctx context.Context, name string) (agent.Agent, error
 		return ag, nil
 	}
 
-	log.Printf("[handler] starting agent %q on demand...", name)
+	slog.Debug("starting agent on demand", "component", "handler", "name", name)
 	ag = h.factory(ctx, name)
 	if ag == nil {
 		return nil, fmt.Errorf("agent %q not available", name)
 	}
 
 	h.agents[name] = ag
-	log.Printf("[handler] agent started on demand: %s (%s)", name, ag.Info())
+	slog.Info("agent started on demand", "component", "handler", "name", name, "info", ag.Info())
 	return ag, nil
 }
 
@@ -152,24 +152,24 @@ func parseCommand(text string) (string, string) {
 func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client, post ringcentral.Post) {
 	text := strings.TrimSpace(post.Text)
 	if text == "" {
-		log.Printf("[handler] received empty message from %s, skipping", post.CreatorID)
+		slog.Debug("received empty message, skipping", "component", "handler", "creatorID", post.CreatorID)
 		return
 	}
 
 	chatID := post.GroupID
-	log.Printf("[handler] received from %s in %s: %q", post.CreatorID, chatID, truncate(text, 80))
+	slog.Info("received message", "component", "handler", "creatorID", post.CreatorID, "chatID", chatID, "text", truncate(text, 80))
 
 	// Built-in commands (no typing needed)
 	if text == "/status" {
 		reply := h.buildStatus()
 		if err := SendTextReply(ctx, client, chatID, reply); err != nil {
-			log.Printf("[handler] failed to send reply: %v", err)
+			slog.Error("failed to send reply", "component", "handler", "error", err)
 		}
 		return
 	} else if text == "/help" {
 		reply := buildHelpText()
 		if err := SendTextReply(ctx, client, chatID, reply); err != nil {
-			log.Printf("[handler] failed to send reply: %v", err)
+			slog.Error("failed to send reply", "component", "handler", "error", err)
 		}
 		return
 	}
@@ -201,13 +201,13 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 		// Send "Thinking..." placeholder and get postID for later update
 		placeholderID, placeholderErr := SendTypingPlaceholder(ctx, client, chatID)
 		if placeholderErr != nil {
-			log.Printf("[handler] failed to send typing placeholder: %v", placeholderErr)
+			slog.Error("failed to send typing placeholder", "component", "handler", "error", placeholderErr)
 		}
 
 		if agentName != "" {
 			ag, agErr := h.getAgent(ctx, agentName)
 			if agErr != nil {
-				log.Printf("[handler] agent %q not available: %v", agentName, agErr)
+				slog.Error("agent not available", "component", "handler", "agent", agentName, "error", agErr)
 				reply = fmt.Sprintf("Agent %q is not available: %v", agentName, agErr)
 			} else {
 				reply, err = h.chatWithAgent(ctx, ag, post.CreatorID, message)
@@ -217,7 +217,7 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 			if ag != nil {
 				reply, err = h.chatWithAgent(ctx, ag, post.CreatorID, text)
 			} else {
-				log.Printf("[handler] agent not ready, using echo mode for %s", post.CreatorID)
+				slog.Warn("agent not ready, using echo mode", "component", "handler", "creatorID", post.CreatorID)
 				reply = "[echo] " + text
 			}
 		}
@@ -235,21 +235,21 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 		// Update the placeholder with the real reply, or send a new post if placeholder failed
 		if placeholderID != "" {
 			if updateErr := UpdatePostText(ctx, client, chatID, placeholderID, reply); updateErr != nil {
-				log.Printf("[handler] failed to update placeholder, sending new post: %v", updateErr)
+				slog.Error("failed to update placeholder, sending new post", "component", "handler", "error", updateErr)
 				if sendErr := SendTextReply(ctx, client, chatID, reply); sendErr != nil {
-					log.Printf("[handler] failed to send reply: %v", sendErr)
+					slog.Error("failed to send reply", "component", "handler", "error", sendErr)
 				}
 			}
 		} else {
 			if sendErr := SendTextReply(ctx, client, chatID, reply); sendErr != nil {
-				log.Printf("[handler] failed to send reply: %v", sendErr)
+				slog.Error("failed to send reply", "component", "handler", "error", sendErr)
 			}
 		}
 
 		// Send extracted images as separate file uploads
 		for _, imgURL := range imageURLs {
 			if mediaErr := SendMediaFromURL(ctx, client, chatID, imgURL); mediaErr != nil {
-				log.Printf("[handler] failed to send image: %v", mediaErr)
+				slog.Error("failed to send image", "component", "handler", "error", mediaErr)
 			}
 		}
 		return
@@ -261,7 +261,7 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 
 	if reply != "" {
 		if sendErr := SendTextReply(ctx, client, chatID, reply); sendErr != nil {
-			log.Printf("[handler] failed to send reply: %v", sendErr)
+			slog.Error("failed to send reply", "component", "handler", "error", sendErr)
 		}
 	}
 }
@@ -269,18 +269,18 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 // chatWithAgent sends a message to an agent and returns the reply.
 func (h *Handler) chatWithAgent(ctx context.Context, ag agent.Agent, userID, message string) (string, error) {
 	info := ag.Info()
-	log.Printf("[handler] dispatching to agent (%s) for %s", info, userID)
+	slog.Info("dispatching to agent", "component", "handler", "info", info, "userID", userID)
 
 	start := time.Now()
 	reply, err := ag.Chat(ctx, userID, message)
 	elapsed := time.Since(start)
 
 	if err != nil {
-		log.Printf("[handler] agent error (%s, elapsed=%s): %v", info, elapsed, err)
+		slog.Error("agent error", "component", "handler", "info", info, "elapsed", elapsed, "error", err)
 		return "", err
 	}
 
-	log.Printf("[handler] agent replied (%s, elapsed=%s): %q", info, elapsed, truncate(reply, 100))
+	slog.Info("agent replied", "component", "handler", "info", info, "elapsed", elapsed, "reply", truncate(reply, 100))
 	return reply, nil
 }
 
@@ -288,7 +288,7 @@ func (h *Handler) chatWithAgent(ctx context.Context, ag agent.Agent, userID, mes
 func (h *Handler) switchDefault(ctx context.Context, name string) string {
 	ag, err := h.getAgent(ctx, name)
 	if err != nil {
-		log.Printf("[handler] failed to switch default to %q: %v", name, err)
+		slog.Warn("failed to switch default agent", "component", "handler", "name", name, "error", err)
 		return fmt.Sprintf("Failed to switch to %q: %v", name, err)
 	}
 
@@ -300,14 +300,14 @@ func (h *Handler) switchDefault(ctx context.Context, name string) string {
 
 	if h.saveDefault != nil {
 		if err := h.saveDefault(name); err != nil {
-			log.Printf("[handler] failed to save default agent to config: %v", err)
+			slog.Error("failed to save default agent to config", "component", "handler", "error", err)
 		} else {
-			log.Printf("[handler] saved default agent %q to config", name)
+			slog.Info("saved default agent to config", "component", "handler", "name", name)
 		}
 	}
 
 	info := ag.Info()
-	log.Printf("[handler] switched default agent: %s -> %s (%s)", old, name, info)
+	slog.Info("switched default agent", "component", "handler", "from", old, "to", name, "info", info)
 	return fmt.Sprintf("switch to %s", name)
 }
 
@@ -404,13 +404,13 @@ func (h *Handler) handleSummarize(ctx context.Context, client *ringcentral.Clien
 
 	placeholderID, placeholderErr := SendTypingPlaceholder(ctx, client, chatID)
 	if placeholderErr != nil {
-		log.Printf("[handler] failed to send typing placeholder: %v", placeholderErr)
+		slog.Error("failed to send typing placeholder", "component", "handler", "error", placeholderErr)
 	}
 
 	sendReply := func(reply string) {
 		if placeholderID != "" {
 			if err := UpdatePostText(ctx, client, chatID, placeholderID, reply); err != nil {
-				log.Printf("[handler] failed to update placeholder: %v", err)
+				slog.Error("failed to update placeholder", "component", "handler", "error", err)
 				_ = SendTextReply(ctx, client, chatID, reply)
 			}
 		} else {
@@ -425,7 +425,7 @@ func (h *Handler) handleSummarize(ctx context.Context, client *ringcentral.Clien
 		return
 	}
 
-	log.Printf("[summarize] target chat: %s (%s), from: %s", req.ChatName, req.ChatID, req.TimeFrom.Format(time.RFC3339))
+	slog.Info("summarize target chat", "component", "summarize", "chatName", req.ChatName, "chatID", req.ChatID, "from", req.TimeFrom.Format(time.RFC3339))
 
 	// Build prompt from chat messages
 	prompt, err := BuildSummaryPrompt(ctx, client, req)

@@ -3,7 +3,7 @@ package messaging
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/ringclaw/ringclaw/ringcentral"
 )
@@ -14,7 +14,7 @@ func SendTypingPlaceholder(ctx context.Context, client *ringcentral.Client, chat
 	if err != nil {
 		return "", fmt.Errorf("send typing placeholder: %w", err)
 	}
-	log.Printf("[sender] sent typing placeholder to chat %s, postId=%s", chatID, post.ID)
+	slog.Info("sent typing placeholder", "component", "sender", "chatID", chatID, "postID", post.ID)
 	return post.ID, nil
 }
 
@@ -24,7 +24,7 @@ func UpdatePostText(ctx context.Context, client *ringcentral.Client, chatID, pos
 	if err != nil {
 		return fmt.Errorf("update post: %w", err)
 	}
-	log.Printf("[sender] updated post %s in chat %s: %q", postID, chatID, truncate(text, 50))
+	slog.Info("updated post", "component", "sender", "postID", postID, "chatID", chatID, "text", truncate(text, 50))
 	return nil
 }
 
@@ -34,7 +34,7 @@ func SendTextReply(ctx context.Context, client *ringcentral.Client, chatID, text
 	if err != nil {
 		return fmt.Errorf("send message: %w", err)
 	}
-	log.Printf("[sender] sent reply to chat %s: %q", chatID, truncate(text, 50))
+	slog.Info("sent reply", "component", "sender", "chatID", chatID, "text", truncate(text, 50))
 	return nil
 }
 

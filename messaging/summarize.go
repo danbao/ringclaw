@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -93,7 +93,7 @@ func (c *chatCache) loadFromDisk() {
 	}
 	var pd persistentCacheData
 	if err := json.Unmarshal(data, &pd); err != nil {
-		log.Printf("[summarize] failed to parse cache file: %v", err)
+		slog.Warn("failed to parse cache file", "component", "summarize", "error", err)
 		return
 	}
 
@@ -110,7 +110,7 @@ func (c *chatCache) loadFromDisk() {
 	c.loaded = len(c.entries) > 0
 	c.mu.Unlock()
 
-	log.Printf("[summarize] loaded cache from disk: %d chats, %d persons", len(pd.Entries), len(pd.Persons))
+	slog.Info("loaded cache from disk", "component", "summarize", "chats", len(pd.Entries), "persons", len(pd.Persons))
 }
 
 // saveToDisk writes the cache to disk.
@@ -137,15 +137,15 @@ func (c *chatCache) saveToDisk() {
 
 	data, err := json.Marshal(pd)
 	if err != nil {
-		log.Printf("[summarize] failed to marshal cache: %v", err)
+		slog.Error("failed to marshal cache", "component", "summarize", "error", err)
 		return
 	}
 	os.MkdirAll(filepath.Dir(path), 0o700)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		log.Printf("[summarize] failed to write cache file: %v", err)
+		slog.Error("failed to write cache file", "component", "summarize", "error", err)
 		return
 	}
-	log.Printf("[summarize] saved cache to disk: %d chats, %d persons", len(pd.Entries), len(pd.Persons))
+	slog.Info("saved cache to disk", "component", "summarize", "chats", len(pd.Entries), "persons", len(pd.Persons))
 }
 
 // lookup searches cached entries by name. Returns nil if not found.
@@ -184,14 +184,14 @@ func (c *chatCache) getPerson(ctx context.Context, client *ringcentral.Client, p
 
 // lookupViaDirectory searches the company directory and creates/finds the Direct chat.
 func (c *chatCache) lookupViaDirectory(ctx context.Context, client *ringcentral.Client, name string) *chatCacheEntry {
-	log.Printf("[summarize] searching company directory for %q", name)
+	slog.Info("searching company directory", "component", "summarize", "name", name)
 	result, err := client.SearchDirectory(ctx, name)
 	if err != nil {
-		log.Printf("[summarize] directory search failed: %v", err)
+		slog.Warn("directory search failed", "component", "summarize", "error", err)
 		return nil
 	}
 	if len(result.Records) == 0 {
-		log.Printf("[summarize] no directory entries found for %q", name)
+		slog.Warn("no directory entries found", "component", "summarize", "name", name)
 		return nil
 	}
 
@@ -206,21 +206,21 @@ func (c *chatCache) lookupViaDirectory(ctx context.Context, client *ringcentral.
 		}
 	}
 	if best == nil {
-		log.Printf("[summarize] directory returned %d entries but none matched %q", len(result.Records), name)
+		slog.Warn("directory returned entries but none matched", "component", "summarize", "count", len(result.Records), "name", name)
 		return nil
 	}
 
 	fullName := strings.TrimSpace(best.FirstName + " " + best.LastName)
-	log.Printf("[summarize] directory matched: %q (id=%s, email=%s)", fullName, best.ID, best.Email)
+	slog.Info("directory matched", "component", "summarize", "fullName", fullName, "id", best.ID, "email", best.Email)
 
 	// Find or create Direct chat via conversations API (idempotent)
 	chat, err := client.CreateConversation(ctx, []string{best.ID})
 	if err != nil {
-		log.Printf("[summarize] create conversation failed: %v", err)
+		slog.Warn("create conversation failed", "component", "summarize", "error", err)
 		return nil
 	}
 
-	log.Printf("[summarize] resolved Direct chat: %q -> %s", fullName, chat.ID)
+	slog.Info("resolved Direct chat", "component", "summarize", "fullName", fullName, "chatID", chat.ID)
 
 	// Cache person info
 	c.mu.Lock()
@@ -289,7 +289,7 @@ func ResolveChatTarget(ctx context.Context, client *ringcentral.Client, text str
 		return nil, fmt.Errorf("cannot determine which chat to summarize. Use a mention or specify a name")
 	}
 
-	log.Printf("[summarize] looking up %q", name)
+	slog.Info("looking up chat", "component", "summarize", "name", name)
 
 	// Load cache from disk if not yet loaded
 	globalChatCache.ensureLoaded()
@@ -298,7 +298,7 @@ func ResolveChatTarget(ctx context.Context, client *ringcentral.Client, text str
 	if entry := globalChatCache.lookup(name); entry != nil {
 		req.ChatID = entry.ChatID
 		req.ChatName = entry.ChatName
-		log.Printf("[summarize] cache hit: %q (id=%s)", entry.ChatName, entry.ChatID)
+		slog.Info("cache hit", "component", "summarize", "chatName", entry.ChatName, "chatID", entry.ChatID)
 		return req, nil
 	}
 
@@ -382,7 +382,7 @@ Highlight key topics, decisions, and action items if any.
 --- End of Messages ---`,
 		chatLabel, timeDesc, len(lines), strings.Join(lines, "\n"))
 
-	log.Printf("[summarize] built prompt for %q: %d messages, %d chars", chatLabel, len(lines), len(prompt))
+	slog.Info("built prompt", "component", "summarize", "chatLabel", chatLabel, "messages", len(lines), "chars", len(prompt))
 	return prompt, nil
 }
 

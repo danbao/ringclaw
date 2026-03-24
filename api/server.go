@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -94,7 +94,7 @@ func (s *Server) Run(ctx context.Context) error {
 		srv.Shutdown(context.Background())
 	}()
 
-	log.Printf("[api] listening on %s", s.addr)
+	slog.Info("listening", "component", "api", "addr", s.addr)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}
@@ -137,20 +137,20 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	if req.Text != "" {
 		if err := messaging.SendTextReply(ctx, s.client, chatID, req.Text); err != nil {
-			log.Printf("[api] send text failed: %v", err)
+			slog.Error("send text failed", "component", "api", "error", err)
 			http.Error(w, "send text failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		log.Printf("[api] sent text to %s: %q", chatID, req.Text)
+		slog.Info("sent text", "component", "api", "chatID", chatID, "text", req.Text)
 	}
 
 	if req.MediaURL != "" {
 		if err := messaging.SendMediaFromURL(ctx, s.client, chatID, req.MediaURL); err != nil {
-			log.Printf("[api] send media failed: %v", err)
+			slog.Error("send media failed", "component", "api", "error", err)
 			http.Error(w, "send media failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		log.Printf("[api] sent media to %s: %s", chatID, req.MediaURL)
+		slog.Info("sent media", "component", "api", "chatID", chatID, "mediaURL", req.MediaURL)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

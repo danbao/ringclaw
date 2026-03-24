@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -104,7 +104,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 		fmt.Println("Starting new version...")
 		if err := runDaemon(); err != nil {
-			log.Printf("Failed to restart: %v", err)
+			slog.Error("failed to restart", "error", err)
 			fmt.Println("Update complete. Please run 'ringclaw start' manually.")
 		}
 	} else {

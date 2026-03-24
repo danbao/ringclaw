@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"sync"
@@ -98,9 +98,9 @@ func (a *CLIAgent) chatClaude(ctx context.Context, conversationID string, messag
 
 	if hasSession {
 		args = append(args, "--resume", sessionID)
-		log.Printf("[cli] resuming session (command=%s, session=%s, conversation=%s)", a.command, sessionID, conversationID)
+		slog.Info("resuming session", "component", "cli", "command", a.command, "session", sessionID, "conversation", conversationID)
 	} else {
-		log.Printf("[cli] starting new conversation (command=%s, conversation=%s)", a.command, conversationID)
+		slog.Info("starting new conversation", "component", "cli", "command", a.command, "conversation", conversationID)
 	}
 
 	cmd := exec.CommandContext(ctx, a.command, args...)
@@ -119,7 +119,7 @@ func (a *CLIAgent) chatClaude(ctx context.Context, conversationID string, messag
 		return "", fmt.Errorf("start %s: %w", a.name, err)
 	}
 
-	log.Printf("[cli] spawned process (command=%s, pid=%d, conversation=%s)", a.command, cmd.Process.Pid, conversationID)
+	slog.Info("spawned process", "component", "cli", "command", a.command, "pid", cmd.Process.Pid, "conversation", conversationID)
 
 	// Parse streaming JSON events
 	var result string
@@ -164,14 +164,14 @@ func (a *CLIAgent) chatClaude(ctx context.Context, conversationID string, messag
 		// If we got a result but exit code is non-zero (e.g. hook failures), still return the result
 	}
 
-	log.Printf("[cli] process exited (command=%s, pid=%d)", a.command, cmd.Process.Pid)
+	slog.Info("process exited", "component", "cli", "command", a.command, "pid", cmd.Process.Pid)
 
 	// Save session ID for multi-turn conversation
 	if newSessionID != "" {
 		a.mu.Lock()
 		a.sessions[conversationID] = newSessionID
 		a.mu.Unlock()
-		log.Printf("[cli] saved session (session=%s, conversation=%s)", newSessionID, conversationID)
+		slog.Info("saved session", "component", "cli", "session", newSessionID, "conversation", conversationID)
 	}
 
 	result = strings.TrimSpace(result)
@@ -191,7 +191,7 @@ func (a *CLIAgent) chatCodex(ctx context.Context, message string) (string, error
 	// Append extra args from config (e.g. --skip-git-repo-check)
 	args = append(args, a.args...)
 
-	log.Printf("[cli] running codex exec (command=%s)", a.command)
+	slog.Info("running codex exec", "component", "cli", "command", a.command)
 	cmd := exec.CommandContext(ctx, a.command, args...)
 	if a.cwd != "" {
 		cmd.Dir = a.cwd

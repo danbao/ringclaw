@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,10 +60,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	if config.DetectAndConfigure(cfg) {
 		if err := config.Save(cfg); err != nil {
-			log.Printf("Warning: failed to save auto-detected config: %v", err)
+			slog.Warn("failed to save auto-detected config", "error", err)
 		} else {
 			path, _ := config.ConfigPath()
-			log.Printf("Auto-detected agents saved to %s", path)
+			slog.Info("auto-detected agents saved", "path", path)
 		}
 	}
 
@@ -81,19 +81,19 @@ func runStart(cmd *cobra.Command, args []string) error {
 	client := ringcentral.NewClient(creds)
 
 	// Authenticate
-	log.Println("Authenticating with RingCentral...")
+	slog.Info("authenticating with RingCentral...")
 	if err := client.Authenticate(); err != nil {
 		return fmt.Errorf("RingCentral authentication failed: %w", err)
 	}
-	log.Println("RingCentral authentication successful")
+	slog.Info("RingCentral authentication successful")
 
 	// Get own extension ID to filter self-messages
 	ownerID, err := client.GetExtensionInfo(ctx)
 	if err != nil {
-		log.Printf("Warning: failed to get extension info: %v", err)
+		slog.Warn("failed to get extension info", "error", err)
 	} else {
 		client.SetOwnerID(ownerID)
-		log.Printf("Bot owner ID: %s", ownerID)
+		slog.Info("bot owner ID resolved", "ownerID", ownerID)
 	}
 
 	// Create handler
@@ -127,13 +127,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Start default agent in background
 	go func() {
 		if cfg.DefaultAgent == "" {
-			log.Println("No default agent configured, staying in echo mode")
+			slog.Info("no default agent configured, staying in echo mode")
 			return
 		}
-		log.Printf("Initializing default agent %q in background...", cfg.DefaultAgent)
+		slog.Info("initializing default agent in background", "agent", cfg.DefaultAgent)
 		ag := createAgentByName(ctx, cfg, cfg.DefaultAgent)
 		if ag == nil {
-			log.Printf("Failed to initialize default agent %q, staying in echo mode", cfg.DefaultAgent)
+			slog.Warn("failed to initialize default agent, staying in echo mode", "agent", cfg.DefaultAgent)
 		} else {
 			handler.SetDefaultAgent(cfg.DefaultAgent, ag)
 		}
@@ -147,20 +147,20 @@ func runStart(cmd *cobra.Command, args []string) error {
 	apiServer := api.NewServer(client, apiAddr)
 	go func() {
 		if err := apiServer.Run(ctx); err != nil {
-			log.Printf("API server error: %v", err)
+			slog.Error("API server error", "error", err)
 		}
 	}()
 
 	// Start WebSocket monitor
-	log.Printf("Starting message bridge for chat %s...", cfg.RC.ChatID)
+	slog.Info("starting message bridge", "chatID", cfg.RC.ChatID)
 
 	// Monitor.Run handles reconnection with backoff internally
 	monitor := ringcentral.NewMonitor(client, handler.HandleMessage)
 	client.SetMonitor(monitor)
 	if err := monitor.Run(ctx); err != nil && ctx.Err() == nil {
-		log.Printf("[monitor] Monitor stopped unexpectedly: %v", err)
+		slog.Error("monitor stopped unexpectedly", "component", "monitor", "error", err)
 	}
-	log.Println("Monitor stopped")
+	slog.Info("monitor stopped")
 	return nil
 }
 
@@ -168,7 +168,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 func createAgentByName(ctx context.Context, cfg *config.Config, name string) agent.Agent {
 	agCfg, ok := cfg.Agents[name]
 	if !ok {
-		log.Printf("[agent] %q not found in config", name)
+		slog.Warn("agent not found in config", "component", "agent", "name", name)
 		return nil
 	}
 
@@ -182,10 +182,10 @@ func createAgentByName(ctx context.Context, cfg *config.Config, name string) age
 			SystemPrompt: agCfg.SystemPrompt,
 		})
 		if err := ag.Start(ctx); err != nil {
-			log.Printf("[agent] failed to start ACP agent %q: %v", name, err)
+			slog.Error("failed to start ACP agent", "component", "agent", "name", name, "error", err)
 			return nil
 		}
-		log.Printf("[agent] started ACP agent: %s (command=%s, type=%s, model=%s)", name, agCfg.Command, agCfg.Type, agCfg.Model)
+		slog.Info("started ACP agent", "component", "agent", "name", name, "command", agCfg.Command, "type", agCfg.Type, "model", agCfg.Model)
 		return ag
 	case "cli":
 		ag := agent.NewCLIAgent(agent.CLIAgentConfig{
@@ -196,11 +196,11 @@ func createAgentByName(ctx context.Context, cfg *config.Config, name string) age
 			Model:        agCfg.Model,
 			SystemPrompt: agCfg.SystemPrompt,
 		})
-		log.Printf("[agent] created CLI agent: %s (command=%s, type=%s, model=%s)", name, agCfg.Command, agCfg.Type, agCfg.Model)
+		slog.Info("created CLI agent", "component", "agent", "name", name, "command", agCfg.Command, "type", agCfg.Type, "model", agCfg.Model)
 		return ag
 	case "http":
 		if agCfg.Endpoint == "" {
-			log.Printf("[agent] HTTP agent %q has no endpoint", name)
+			slog.Warn("HTTP agent has no endpoint", "component", "agent", "name", name)
 			return nil
 		}
 		ag := agent.NewHTTPAgent(agent.HTTPAgentConfig{
@@ -210,10 +210,10 @@ func createAgentByName(ctx context.Context, cfg *config.Config, name string) age
 			SystemPrompt: agCfg.SystemPrompt,
 			MaxHistory:   agCfg.MaxHistory,
 		})
-		log.Printf("[agent] created HTTP agent: %s (endpoint=%s, model=%s)", name, agCfg.Endpoint, agCfg.Model)
+		slog.Info("created HTTP agent", "component", "agent", "name", name, "endpoint", agCfg.Endpoint, "model", agCfg.Model)
 		return ag
 	default:
-		log.Printf("[agent] unknown type %q for %q", agCfg.Type, name)
+		slog.Warn("unknown agent type", "component", "agent", "type", agCfg.Type, "name", name)
 		return nil
 	}
 }
@@ -292,11 +292,11 @@ func readPid() (int, error) {
 // verifyAgents checks each detected agent and logs availability status.
 func verifyAgents(cfg *config.Config) {
 	if len(cfg.Agents) == 0 {
-		log.Println("[agents] No agents detected")
+		slog.Info("no agents detected", "component", "agents")
 		return
 	}
 
-	log.Println("[agents] Verifying detected agents...")
+	slog.Info("verifying detected agents", "component", "agents")
 
 	type result struct {
 		name   string
@@ -357,16 +357,15 @@ func verifyAgents(cfg *config.Config) {
 	var available, unavailable []string
 	for r := range results {
 		if r.ok {
-			log.Printf("[agents]   ✓ %-12s (type=%s, %s)", r.name, r.agType, r.detail)
+			slog.Info("agent available", "component", "agents", "name", r.name, "type", r.agType, "detail", r.detail)
 			available = append(available, r.name)
 		} else {
-			log.Printf("[agents]   ✗ %-12s (type=%s, %s)", r.name, r.agType, r.detail)
+			slog.Warn("agent unavailable", "component", "agents", "name", r.name, "type", r.agType, "detail", r.detail)
 			unavailable = append(unavailable, r.name)
 		}
 	}
 
-	log.Printf("[agents] %d available, %d unavailable (default: %s)",
-		len(available), len(unavailable), cfg.DefaultAgent)
+	slog.Info("agent verification complete", "component", "agents", "available", len(available), "unavailable", len(unavailable), "default", cfg.DefaultAgent)
 
 	// Remove unavailable agents from config
 	for _, name := range unavailable {
@@ -381,7 +380,7 @@ func verifyAgents(cfg *config.Config) {
 		for _, name := range config.DefaultOrder() {
 			if _, ok := cfg.Agents[name]; ok {
 				cfg.DefaultAgent = name
-				log.Printf("[agents] default agent set to %s", name)
+				slog.Info("default agent set", "component", "agents", "name", name)
 				break
 			}
 		}

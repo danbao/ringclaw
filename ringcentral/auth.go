@@ -156,3 +156,11 @@ func (a *Auth) GetWSToken() (*WSTokenResponse, error) {
 	}
 	return &wsResp, nil
 }
+
+// SetTokenForTest sets a token directly for testing purposes.
+func (a *Auth) SetTokenForTest(token string, expiresAt time.Time) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.accessToken = token
+	a.expiresAt = expiresAt
+}

@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,7 +70,7 @@ func DetectAndConfigure(cfg *Config) bool {
 			continue
 		}
 
-		log.Printf("[config] auto-detected %s at %s (type=%s)", candidate.Name, path, candidate.Type)
+		slog.Info("auto-detected agent", "component", "config", "name", candidate.Name, "path", path, "type", candidate.Type)
 		cfg.Agents[candidate.Name] = AgentConfig{
 			Type:    candidate.Type,
 			Command: path,
@@ -94,9 +94,9 @@ func DetectAndConfigure(cfg *Config) bool {
 			agCfg.Args = args
 			cfg.Agents["openclaw"] = agCfg
 			modified = true
-			log.Printf("[config] openclaw ACP configured with gateway: %s", gwURL)
+			slog.Info("openclaw ACP configured with gateway", "component", "config", "gateway", gwURL)
 		} else {
-			log.Printf("[config] openclaw binary found but no gateway config, skipping ACP")
+			slog.Warn("openclaw binary found but no gateway config, skipping ACP", "component", "config")
 			delete(cfg.Agents, "openclaw")
 			modified = true
 		}
@@ -111,7 +111,7 @@ func DetectAndConfigure(cfg *Config) bool {
 			httpURL = strings.Replace(httpURL, "wss://", "https://", 1)
 			httpURL = strings.Replace(httpURL, "ws://", "http://", 1)
 			endpoint := strings.TrimRight(httpURL, "/") + "/v1/chat/completions"
-			log.Printf("[config] using openclaw HTTP fallback: %s", endpoint)
+			slog.Info("using openclaw HTTP fallback", "component", "config", "endpoint", endpoint)
 			cfg.Agents["openclaw"] = AgentConfig{
 				Type:     "http",
 				Endpoint: endpoint,
@@ -127,7 +127,7 @@ func DetectAndConfigure(cfg *Config) bool {
 		for _, name := range defaultOrder {
 			if _, ok := cfg.Agents[name]; ok {
 				if cfg.DefaultAgent != name {
-					log.Printf("[config] setting default agent: %s", name)
+					slog.Info("setting default agent", "component", "config", "name", name)
 					cfg.DefaultAgent = name
 					modified = true
 				}
@@ -178,7 +178,7 @@ func loadOpenclawGateway() (gwURL, gwToken, gwPassword string) {
 		} `json:"gateway"`
 	}
 	if err := json.Unmarshal(data, &ocCfg); err != nil {
-		log.Printf("[config] failed to parse openclaw config: %v", err)
+		slog.Error("failed to parse openclaw config", "component", "config", "error", err)
 		return
 	}
 
