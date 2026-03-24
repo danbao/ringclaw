@@ -68,49 +68,16 @@ func ResolveChatTarget(ctx context.Context, client *ringcentral.Client, text str
 
 	log.Printf("[summarize] fuzzy searching for %q", name)
 
-	// Search Teams by name
-	teamChats, err := client.ListChats(ctx, "Team")
-	if err != nil {
-		log.Printf("[summarize] failed to list Team chats: %v", err)
-	} else {
-		log.Printf("[summarize] searching %d Team chats", len(teamChats.Records))
-		for _, chat := range teamChats.Records {
-			if fuzzyMatch(chat.Name, name) {
-				req.ChatID = chat.ID
-				req.ChatName = chat.Name
-				log.Printf("[summarize] matched team %q (id=%s)", chat.Name, chat.ID)
-				return req, nil
-			}
-		}
-	}
-
-	// Search Group chats by name
-	groupChats, err := client.ListChats(ctx, "Group")
-	if err != nil {
-		log.Printf("[summarize] failed to list Group chats: %v", err)
-	} else {
-		log.Printf("[summarize] searching %d Group chats", len(groupChats.Records))
-		for _, chat := range groupChats.Records {
-			if fuzzyMatch(chat.Name, name) {
-				req.ChatID = chat.ID
-				req.ChatName = chat.Name
-				log.Printf("[summarize] matched group %q (id=%s)", chat.Name, chat.ID)
-				return req, nil
-			}
-		}
-	}
-
-	// Search Direct chats by member name
+	// 1. Search Direct chats first (person-to-person, highest priority)
 	directChats, err := client.ListChats(ctx, "Direct")
 	if err != nil {
 		log.Printf("[summarize] failed to list Direct chats: %v", err)
 	} else {
-		log.Printf("[summarize] searching %d Direct chats (members in each: looking up names)", len(directChats.Records))
+		log.Printf("[summarize] searching %d Direct chats by member name", len(directChats.Records))
 		ownerID := client.OwnerID()
 		for _, chat := range directChats.Records {
 			memberIDs := chat.MemberIDs()
 			if len(memberIDs) == 0 {
-				log.Printf("[summarize]   chat %s has no members field", chat.ID)
 				continue
 			}
 			for _, memberID := range memberIDs {
@@ -130,6 +97,38 @@ func ResolveChatTarget(ctx context.Context, client *ringcentral.Client, text str
 					log.Printf("[summarize] matched person %q in direct chat (id=%s)", fullName, chat.ID)
 					return req, nil
 				}
+			}
+		}
+	}
+
+	// 2. Search Teams by name
+	teamChats, err := client.ListChats(ctx, "Team")
+	if err != nil {
+		log.Printf("[summarize] failed to list Team chats: %v", err)
+	} else {
+		log.Printf("[summarize] searching %d Team chats by name", len(teamChats.Records))
+		for _, chat := range teamChats.Records {
+			if fuzzyMatch(chat.Name, name) {
+				req.ChatID = chat.ID
+				req.ChatName = chat.Name
+				log.Printf("[summarize] matched team %q (id=%s)", chat.Name, chat.ID)
+				return req, nil
+			}
+		}
+	}
+
+	// 3. Search Group chats by name
+	groupChats, err := client.ListChats(ctx, "Group")
+	if err != nil {
+		log.Printf("[summarize] failed to list Group chats: %v", err)
+	} else {
+		log.Printf("[summarize] searching %d Group chats by name", len(groupChats.Records))
+		for _, chat := range groupChats.Records {
+			if fuzzyMatch(chat.Name, name) {
+				req.ChatID = chat.ID
+				req.ChatName = chat.Name
+				log.Printf("[summarize] matched group %q (id=%s)", chat.Name, chat.ID)
+				return req, nil
 			}
 		}
 	}
