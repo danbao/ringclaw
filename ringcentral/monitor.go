@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ const (
 	initialBackoff         = 3 * time.Second
 	maxBackoff             = 60 * time.Second
 	wsPingInterval         = 30 * time.Second
+	wsPongWait             = 60 * time.Second
 )
 
 // MessageHandler is called for each received post.
@@ -68,13 +70,11 @@ func (m *Monitor) Run(ctx context.Context) error {
 }
 
 func (m *Monitor) connectAndListen(ctx context.Context) error {
-	// Get WebSocket token
 	wsToken, err := m.client.Auth().GetWSToken()
 	if err != nil {
 		return fmt.Errorf("get WS token: %w", err)
 	}
 
-	// Connect to WebSocket server
 	wsURL := wsToken.URI + "?access_token=" + url.QueryEscape(wsToken.WSAccessToken)
 	log.Printf("[monitor] connecting to WebSocket: %s", wsToken.URI)
 
@@ -96,36 +96,67 @@ func (m *Monitor) connectAndListen(ctx context.Context) error {
 		return fmt.Errorf("subscribe: %w", err)
 	}
 
-	// Reset failure counter on successful connection
 	m.failures = 0
 	log.Println("[monitor] subscribed to post events, listening...")
 
-	// Start ping ticker
-	ticker := time.NewTicker(wsPingInterval)
-	defer ticker.Stop()
+	// Set up pong handler to extend read deadline on each pong received
+	conn.SetPongHandler(func(appData string) error {
+		conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		return nil
+	})
 
-	// Read events
+	// Set initial read deadline
+	conn.SetReadDeadline(time.Now().Add(wsPongWait))
+
+	// Use a channel to signal errors from the read goroutine
+	errCh := make(chan error, 1)
+
+	// Write goroutine: sends pings periodically
+	var writeMu sync.Mutex
+	go func() {
+		ticker := time.NewTicker(wsPingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				writeMu.Lock()
+				conn.WriteMessage(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+				writeMu.Unlock()
+				return
+			case <-ticker.C:
+				writeMu.Lock()
+				err := conn.WriteMessage(websocket.PingMessage, nil)
+				writeMu.Unlock()
+				if err != nil {
+					errCh <- fmt.Errorf("ping: %w", err)
+					return
+				}
+			}
+		}
+	}()
+
+	// Read loop in main goroutine
 	for {
 		select {
-		case <-ctx.Done():
-			conn.WriteMessage(websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			return ctx.Err()
-		case <-ticker.C:
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return fmt.Errorf("ping: %w", err)
-			}
+		case err := <-errCh:
+			return err
 		default:
 		}
 
-		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 				return nil
 			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("read message: %w", err)
 		}
+
+		// Extend deadline on any received message
+		conn.SetReadDeadline(time.Now().Add(wsPongWait))
 
 		m.handleWSMessage(ctx, msg)
 	}
@@ -158,7 +189,6 @@ func (m *Monitor) subscribe(conn *websocket.Conn) error {
 		return fmt.Errorf("send subscription: %w", err)
 	}
 
-	// Read subscription response
 	_, resp, err := conn.ReadMessage()
 	if err != nil {
 		return fmt.Errorf("read subscription response: %w", err)
@@ -168,30 +198,42 @@ func (m *Monitor) subscribe(conn *websocket.Conn) error {
 }
 
 func (m *Monitor) handleWSMessage(ctx context.Context, msg []byte) {
+	// Log all incoming WebSocket messages for debugging
+	log.Printf("[monitor] raw WS message: %s", string(msg))
+
 	var event WSEvent
 	if err := json.Unmarshal(msg, &event); err != nil {
-		// Not all messages are events (heartbeats, etc.)
+		log.Printf("[monitor] ignoring non-event message: %v", err)
+		return
+	}
+
+	if event.Body.EventType == "" {
+		log.Printf("[monitor] ignoring message without eventType")
 		return
 	}
 
 	// Only process PostAdded events
 	if event.Body.EventType != "PostAdded" {
+		log.Printf("[monitor] ignoring event type: %s", event.Body.EventType)
 		return
 	}
 
 	// Skip messages from self
 	if event.Body.CreatorID == m.client.OwnerID() {
+		log.Printf("[monitor] ignoring self-message from %s", event.Body.CreatorID)
 		return
 	}
 
 	// Only process text messages
 	if event.Body.Type != "TextMessage" {
+		log.Printf("[monitor] ignoring non-text message type: %s", event.Body.Type)
 		return
 	}
 
 	// Filter by chat ID if configured
 	chatID := m.client.ChatID()
 	if chatID != "" && event.Body.GroupID != chatID {
+		log.Printf("[monitor] ignoring message from chat %s (expected %s)", event.Body.GroupID, chatID)
 		return
 	}
 
