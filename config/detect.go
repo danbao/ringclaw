@@ -30,17 +30,24 @@ var agentCandidates = []agentCandidate{
 	{Name: "codex", Binary: "codex-acp", Type: "acp", Model: ""},
 	{Name: "codex", Binary: "codex", Type: "cli", Model: ""},
 	// ACP-only agents
-	{Name: "cursor", Binary: "agent", Args: []string{"acp"}, Type: "acp", Model: ""},
+	{Name: "cursor", Binary: "cursor-agent", Args: []string{"acp"}, Type: "acp", Model: ""},
 	{Name: "kimi", Binary: "kimi", Args: []string{"acp"}, Type: "acp", Model: ""},
 	{Name: "gemini", Binary: "gemini", Args: []string{"--acp"}, Type: "acp", Model: ""},
 	{Name: "opencode", Binary: "opencode", Args: []string{"acp"}, Type: "acp", Model: ""},
 	{Name: "openclaw", Binary: "openclaw", Type: "acp", Model: "openclaw:main"}, // args built dynamically
+	{Name: "pi", Binary: "pi-acp", Type: "acp", Model: ""},
+	{Name: "copilot", Binary: "copilot", Args: []string{"--acp", "--stdio"}, Type: "acp", Model: ""},
+	{Name: "droid", Binary: "droid", Args: []string{"exec", "--output-format", "acp"}, Type: "acp", Model: ""},
+	{Name: "iflow", Binary: "iflow", Args: []string{"--experimental-acp"}, Type: "acp", Model: ""},
+	{Name: "kiro", Binary: "kiro-cli", Args: []string{"acp"}, Type: "acp", Model: ""},
+	{Name: "qwen", Binary: "qwen", Args: []string{"--acp"}, Type: "acp", Model: ""},
 }
 
 // defaultOrder defines the priority for choosing the default agent.
 // Lower index = higher priority.
 var defaultOrder = []string{
 	"claude", "codex", "cursor", "kimi", "gemini", "opencode", "openclaw",
+	"pi", "copilot", "droid", "iflow", "kiro", "qwen",
 }
 
 // DetectAndConfigure auto-detects local agents and populates the config.
