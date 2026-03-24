@@ -68,66 +68,22 @@ func ResolveChatTarget(ctx context.Context, client *ringcentral.Client, text str
 
 	log.Printf("[summarize] fuzzy searching for %q", name)
 
-	// 1. Search Direct chats first (person-to-person, highest priority)
-	directChats, err := client.ListChats(ctx, "Direct")
-	if err != nil {
-		log.Printf("[summarize] failed to list Direct chats: %v", err)
-	} else {
-		log.Printf("[summarize] searching %d Direct chats by member name", len(directChats.Records))
-		ownerID := client.OwnerID()
-		for _, chat := range directChats.Records {
-			memberIDs := chat.MemberIDs()
-			if len(memberIDs) == 0 {
-				continue
-			}
-			for _, memberID := range memberIDs {
-				if memberID == ownerID {
-					continue
-				}
-				person, perr := client.GetPersonInfo(ctx, memberID)
-				if perr != nil {
-					log.Printf("[summarize]   GetPersonInfo(%s) failed: %v", memberID, perr)
-					continue
-				}
-				fullName := strings.TrimSpace(person.FirstName + " " + person.LastName)
-				log.Printf("[summarize]   checking: %q (email=%s) vs %q", fullName, person.Email, name)
-				if fuzzyMatch(fullName, name) || fuzzyMatch(person.Email, name) {
-					req.ChatID = chat.ID
-					req.ChatName = fullName
-					log.Printf("[summarize] matched person %q in direct chat (id=%s)", fullName, chat.ID)
-					return req, nil
-				}
-			}
+	// Fetch all chat types in one pass and match by name.
+	// RingCentral populates the Name field for all chat types:
+	// - Direct: the other person's display name
+	// - Team/Group: the team/group name
+	for _, chatType := range []string{"Direct", "Team", "Group"} {
+		chats, err := client.ListChats(ctx, chatType)
+		if err != nil {
+			log.Printf("[summarize] failed to list %s chats: %v", chatType, err)
+			continue
 		}
-	}
-
-	// 2. Search Teams by name
-	teamChats, err := client.ListChats(ctx, "Team")
-	if err != nil {
-		log.Printf("[summarize] failed to list Team chats: %v", err)
-	} else {
-		log.Printf("[summarize] searching %d Team chats by name", len(teamChats.Records))
-		for _, chat := range teamChats.Records {
-			if fuzzyMatch(chat.Name, name) {
+		log.Printf("[summarize] searching %d %s chats by name", len(chats.Records), chatType)
+		for _, chat := range chats.Records {
+			if chat.Name != "" && fuzzyMatch(chat.Name, name) {
 				req.ChatID = chat.ID
 				req.ChatName = chat.Name
-				log.Printf("[summarize] matched team %q (id=%s)", chat.Name, chat.ID)
-				return req, nil
-			}
-		}
-	}
-
-	// 3. Search Group chats by name
-	groupChats, err := client.ListChats(ctx, "Group")
-	if err != nil {
-		log.Printf("[summarize] failed to list Group chats: %v", err)
-	} else {
-		log.Printf("[summarize] searching %d Group chats by name", len(groupChats.Records))
-		for _, chat := range groupChats.Records {
-			if fuzzyMatch(chat.Name, name) {
-				req.ChatID = chat.ID
-				req.ChatName = chat.Name
-				log.Printf("[summarize] matched group %q (id=%s)", chat.Name, chat.ID)
+				log.Printf("[summarize] matched %s chat %q (id=%s)", chatType, chat.Name, chat.ID)
 				return req, nil
 			}
 		}
@@ -280,33 +236,36 @@ func formatTimeDesc(from time.Time) string {
 var reMention = regexp.MustCompile(`!\[:\w+\]\(\d+\)`)
 
 func extractNameFromText(text string) string {
-	// Remove summarize keywords
 	clean := text
+	// Remove summarize keywords
 	for _, kw := range summarizeKeywords {
 		clean = strings.ReplaceAll(clean, kw, "")
 	}
 	// Remove mentions
 	clean = reMention.ReplaceAllString(clean, "")
+	// Lowercase for filler removal
+	clean = strings.ToLower(clean)
 	// Remove time keywords
 	for _, kw := range []string{"今天", "昨天", "本周", "最近", "过去", "today", "yesterday", "this week", "last"} {
-		clean = strings.ReplaceAll(strings.ToLower(clean), kw, "")
-	}
-	// Remove common filler words
-	for _, kw := range []string{"一下", "的", "消息", "聊天", "对话", "跟", "和", "与", "我", "messages", "chat", "conversation", "with", "my"} {
 		clean = strings.ReplaceAll(clean, kw, "")
 	}
-	// Remove digits (days count etc)
+	// Remove common filler words (Chinese single chars and phrases)
+	for _, kw := range []string{
+		"一下", "下", "的", "消息", "聊天", "对话", "群聊", "群",
+		"跟", "和", "与", "我", "了",
+		"messages", "chat", "conversation", "with", "my", "the",
+	} {
+		clean = strings.ReplaceAll(clean, kw, "")
+	}
+	// Remove digits
 	clean = regexp.MustCompile(`\d+`).ReplaceAllString(clean, "")
-	// Remove punctuation and trim
+	// Remove punctuation and collapse whitespace
 	clean = regexp.MustCompile(`[，。！？,\.!\?\s]+`).ReplaceAllString(clean, " ")
-	clean = strings.TrimSpace(clean)
-
-	// Remove remaining filler
+	// Remove remaining time units
 	for _, kw := range []string{"天", "小时", "个", "hours", "days"} {
 		clean = strings.ReplaceAll(clean, kw, "")
 	}
 	clean = strings.TrimSpace(clean)
-
 	return clean
 }
 
