@@ -257,29 +257,29 @@ func createAgentByName(ctx context.Context, cfg *config.Config, name string) age
 
 // --- Daemon mode ---
 
-func weclawDir() string {
+func ringclawDir() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".weclaw")
+	return filepath.Join(home, ".ringclaw")
 }
 
 func pidFile() string {
-	return filepath.Join(weclawDir(), "weclaw.pid")
+	return filepath.Join(ringclawDir(), "ringclaw.pid")
 }
 
 func logFile() string {
-	return filepath.Join(weclawDir(), "weclaw.log")
+	return filepath.Join(ringclawDir(), "ringclaw.log")
 }
 
 func runDaemon() error {
 	if pid, err := readPid(); err == nil {
 		if processExists(pid) {
-			fmt.Printf("weclaw is already running (pid=%d)\n", pid)
+			fmt.Printf("ringclaw is already running (pid=%d)\n", pid)
 			return nil
 		}
 	}
 
-	if err := os.MkdirAll(weclawDir(), 0o700); err != nil {
-		return fmt.Errorf("create weclaw dir: %w", err)
+	if err := os.MkdirAll(ringclawDir(), 0o700); err != nil {
+		return fmt.Errorf("create ringclaw dir: %w", err)
 	}
 
 	lf, err := os.OpenFile(logFile(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
@@ -308,9 +308,9 @@ func runDaemon() error {
 	cmd.Process.Release()
 	lf.Close()
 
-	fmt.Printf("weclaw started in background (pid=%d)\n", pid)
+	fmt.Printf("ringclaw started in background (pid=%d)\n", pid)
 	fmt.Printf("Log: %s\n", logFile())
-	fmt.Printf("Stop: weclaw stop\n")
+	fmt.Printf("Stop: ringclaw stop\n")
 	return nil
 }
 

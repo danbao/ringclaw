@@ -14,17 +14,17 @@ func init() {
 
 var stopCmd = &cobra.Command{
 	Use:   "stop",
-	Short: "Stop the background weclaw process",
+	Short: "Stop the background ringclaw process",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pid, err := readPid()
 		if err != nil {
-			fmt.Println("weclaw is not running")
+			fmt.Println("ringclaw is not running")
 			return nil
 		}
 
 		if !processExists(pid) {
 			os.Remove(pidFile())
-			fmt.Println("weclaw is not running (stale pid file removed)")
+			fmt.Println("ringclaw is not running (stale pid file removed)")
 			return nil
 		}
 
@@ -38,7 +38,7 @@ var stopCmd = &cobra.Command{
 		}
 
 		os.Remove(pidFile())
-		fmt.Printf("weclaw stopped (pid=%d)\n", pid)
+		fmt.Printf("ringclaw stopped (pid=%d)\n", pid)
 		return nil
 	},
 }

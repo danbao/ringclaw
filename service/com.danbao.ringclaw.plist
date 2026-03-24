@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.fastclaw.weclaw</string>
+    <string>com.danbao.ringclaw</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/weclaw</string>
+        <string>/usr/local/bin/ringclaw</string>
         <string>start</string>
     </array>
     <key>RunAtLoad</key>
@@ -14,8 +14,8 @@
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/weclaw.log</string>
+    <string>/tmp/ringclaw.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/weclaw.log</string>
+    <string>/tmp/ringclaw.log</string>
 </dict>
 </plist>

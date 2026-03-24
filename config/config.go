@@ -50,7 +50,7 @@ func ConfigPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".weclaw", "config.json"), nil
+	return filepath.Join(home, ".ringclaw", "config.json"), nil
 }
 
 // Load loads configuration from disk and environment variables.
@@ -83,10 +83,10 @@ func Load() (*Config, error) {
 }
 
 func loadEnv(cfg *Config) {
-	if v := os.Getenv("WECLAW_DEFAULT_AGENT"); v != "" {
+	if v := os.Getenv("RINGCLAW_DEFAULT_AGENT"); v != "" {
 		cfg.DefaultAgent = v
 	}
-	if v := os.Getenv("WECLAW_API_ADDR"); v != "" {
+	if v := os.Getenv("RINGCLAW_API_ADDR"); v != "" {
 		cfg.APIAddr = v
 	}
 	if v := os.Getenv("RC_CLIENT_ID"); v != "" {

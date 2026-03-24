@@ -27,19 +27,19 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the current version",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("weclaw %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("ringclaw %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
 	},
 }
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update weclaw to the latest version and restart",
+	Short: "Update ringclaw to the latest version and restart",
 	RunE:  runUpdate,
 }
 
 var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
-	Short: "Update weclaw to the latest version and restart (alias for update)",
+	Short: "Update ringclaw to the latest version and restart (alias for update)",
 	RunE:  runUpdate,
 }
 
@@ -61,7 +61,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// 2. Download new binary
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
-	filename := fmt.Sprintf("weclaw_%s_%s", goos, goarch)
+	filename := fmt.Sprintf("ringclaw_%s_%s", goos, goarch)
 	url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", githubRepo, latest, filename)
 
 	fmt.Printf("Downloading %s...\n", url)
@@ -106,10 +106,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		fmt.Println("Starting new version...")
 		if err := runDaemon(); err != nil {
 			log.Printf("Failed to restart: %v", err)
-			fmt.Println("Update complete. Please run 'weclaw start' manually.")
+			fmt.Println("Update complete. Please run 'ringclaw start' manually.")
 		}
 	} else {
-		fmt.Println("Update complete. Run 'weclaw start' to start.")
+		fmt.Println("Update complete. Run 'ringclaw start' to start.")
 	}
 
 	return nil
@@ -146,7 +146,7 @@ func downloadFile(url string) (string, error) {
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	tmp, err := os.CreateTemp("", "weclaw-update-*")
+	tmp, err := os.CreateTemp("", "ringclaw-update-*")
 	if err != nil {
 		return "", err
 	}

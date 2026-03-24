@@ -37,12 +37,12 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           go build -ldflags="-s -w -X github.com/danbao/ringclaw/cmd.Version=${{ github.ref_name }}" \
-            -o weclaw_${{ matrix.goos }}_${{ matrix.goarch }} .
+            -o ringclaw_${{ matrix.goos }}_${{ matrix.goarch }} .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: weclaw_${{ matrix.goos }}_${{ matrix.goarch }}
-          path: weclaw_${{ matrix.goos }}_${{ matrix.goarch }}
+          name: ringclaw_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: ringclaw_${{ matrix.goos }}_${{ matrix.goarch }}
 
   release:
     needs: build
@@ -55,12 +55,12 @@ jobs:
 
       - name: Generate checksums
         working-directory: dist
-        run: sha256sum weclaw_* > checksums.txt
+        run: sha256sum ringclaw_* > checksums.txt
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            dist/weclaw_*
+            dist/ringclaw_*
             dist/checksums.txt

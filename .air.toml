@@ -4,8 +4,8 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = ["start", "-f"]
-  bin = "./weclaw"
-  cmd = "go build -o ./weclaw ."
+  bin = "./ringclaw"
+  cmd = "go build -o ./ringclaw ."
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "debug"]
   exclude_file = []

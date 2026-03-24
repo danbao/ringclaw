@@ -11,9 +11,9 @@ import (
 var Version = "dev"
 
 var rootCmd = &cobra.Command{
-	Use:     "weclaw",
+	Use:     "ringclaw",
 	Short:   "RingCentral AI agent bridge",
-	Long:    "weclaw bridges RingCentral Team Messaging to AI agents via the RingCentral API.",
+	Long:    "ringclaw bridges RingCentral Team Messaging to AI agents via the RingCentral API.",
 	Version: Version,
 	RunE:    runStart, // default command is start
 }

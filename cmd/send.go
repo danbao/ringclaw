@@ -28,10 +28,10 @@ func init() {
 var sendCmd = &cobra.Command{
 	Use:   "send",
 	Short: "Send a message to a RingCentral chat",
-	Example: `  weclaw send --text "Hello"
-  weclaw send --to "chatId" --text "Hello"
-  weclaw send --media "https://example.com/image.png"
-  weclaw send --text "See this" --media "https://example.com/image.png"`,
+	Example: `  ringclaw send --text "Hello"
+  ringclaw send --to "chatId" --text "Hello"
+  ringclaw send --media "https://example.com/image.png"
+  ringclaw send --text "See this" --media "https://example.com/image.png"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if sendText == "" && sendMediaURL == "" {
 			return fmt.Errorf("at least one of --text or --media is required")

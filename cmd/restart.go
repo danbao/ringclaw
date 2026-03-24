@@ -15,12 +15,12 @@ func init() {
 
 var restartCmd = &cobra.Command{
 	Use:   "restart",
-	Short: "Restart the background weclaw process",
+	Short: "Restart the background ringclaw process",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Stop if running
 		pid, err := readPid()
 		if err == nil && processExists(pid) {
-			fmt.Printf("Stopping weclaw (pid=%d)...\n", pid)
+			fmt.Printf("Stopping ringclaw (pid=%d)...\n", pid)
 			if p, err := os.FindProcess(pid); err == nil {
 				p.Signal(syscall.SIGTERM)
 			}
@@ -34,7 +34,7 @@ var restartCmd = &cobra.Command{
 		}
 
 		// Start
-		fmt.Println("Starting weclaw...")
+		fmt.Println("Starting ringclaw...")
 		return runDaemon()
 	},
 }

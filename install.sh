@@ -2,7 +2,7 @@
 set -e
 
 REPO="danbao/ringclaw"
-BINARY="weclaw"
+BINARY="ringclaw"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # Detect OS
@@ -52,7 +52,7 @@ else
 fi
 
 echo ""
-echo "weclaw ${VERSION} installed to ${INSTALL_DIR}/${BINARY}"
+echo "ringclaw ${VERSION} installed to ${INSTALL_DIR}/${BINARY}"
 echo ""
 echo "Get started:"
-echo "  weclaw start"
+echo "  ringclaw start"
