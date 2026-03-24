@@ -72,7 +72,7 @@ RingClaw connects to RingCentral Team Messaging via WebSocket to receive message
 
 | Mode | How it works | Examples |
 |------|-------------|----------|
-| ACP  | Long-running subprocess, JSON-RPC over stdio. Fastest — reuses process and sessions. | Claude, Codex, Kimi, Gemini, Cursor, OpenCode, OpenClaw |
+| ACP  | Long-running subprocess, JSON-RPC over stdio. Fastest — reuses process and sessions. | Claude, Codex, Cursor, Kimi, Gemini, OpenCode, OpenClaw, Pi, Copilot, Droid, iFlow, Kiro, Qwen |
 | CLI  | Spawns a new process per message. Supports session resume via `--resume`. | Claude (`claude -p`), Codex (`codex exec`) |
 | HTTP | OpenAI-compatible chat completions API. | OpenClaw (HTTP fallback) |
 
@@ -102,6 +102,12 @@ Send these as messages in your RingCentral chat:
 | `/gm` | gemini |
 | `/ocd` | opencode |
 | `/oc` | openclaw |
+| `/pi` | pi |
+| `/cp` | copilot |
+| `/dr` | droid |
+| `/if` | iflow |
+| `/kr` | kiro |
+| `/qw` | qwen |
 
 Switching default agent is persisted to config — survives restarts.
 
