@@ -415,6 +415,7 @@ func buildHelpText() string {
 /task list|create|get|update|delete|complete
 /note list|create|get|update|delete
 /event list|create|get|update|delete
+/card get|delete
 
 Aliases: /cc(claude) /cx(codex) /cs(cursor) /km(kimi) /gm(gemini) /oc(openclaw) /ocd(opencode) /pi(pi) /cp(copilot) /dr(droid) /if(iflow) /kr(kiro) /qw(qwen)`
 }

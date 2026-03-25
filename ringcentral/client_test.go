@@ -445,6 +445,76 @@ func TestCRUD_HTTPError(t *testing.T) {
 	}
 }
 
+// --- Adaptive Card CRUD tests ---
+
+func TestCreateAdaptiveCard_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(AdaptiveCard{ID: "ac1", Type: "AdaptiveCard", Version: "1.3"})
+	})
+	defer srv.Close()
+
+	card, err := client.CreateAdaptiveCard(context.Background(), "chat1", json.RawMessage(`{"type":"AdaptiveCard","version":"1.3","body":[]}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card.ID != "ac1" {
+		t.Errorf("expected ac1, got %s", card.ID)
+	}
+}
+
+func TestGetAdaptiveCard_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(AdaptiveCard{ID: "ac1", Type: "AdaptiveCard"})
+	})
+	defer srv.Close()
+
+	card, err := client.GetAdaptiveCard(context.Background(), "ac1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card.ID != "ac1" {
+		t.Errorf("expected ac1, got %s", card.ID)
+	}
+}
+
+func TestUpdateAdaptiveCard_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(AdaptiveCard{ID: "ac1", Type: "AdaptiveCard"})
+	})
+	defer srv.Close()
+
+	card, err := client.UpdateAdaptiveCard(context.Background(), "ac1", json.RawMessage(`{"type":"AdaptiveCard","version":"1.3","body":[]}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if card.ID != "ac1" {
+		t.Errorf("expected ac1, got %s", card.ID)
+	}
+}
+
+func TestDeleteAdaptiveCard_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	defer srv.Close()
+
+	if err := client.DeleteAdaptiveCard(context.Background(), "ac1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestInferContentType(t *testing.T) {
 	tests := []struct {
 		fileName string

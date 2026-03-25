@@ -108,6 +108,10 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/api/events/", s.handleEventByID)
 
+	// Adaptive Card endpoints
+	mux.HandleFunc("/api/cards", s.handleCards)
+	mux.HandleFunc("/api/cards/", s.handleCardByID)
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
@@ -463,6 +467,84 @@ func (s *Server) handleEventByID(w http.ResponseWriter, r *http.Request) {
 		s.jsonReply(w, event)
 	case http.MethodDelete:
 		if err := s.client.DeleteEvent(ctx, eventID); err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		s.jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// --- Adaptive Card HTTP handlers ---
+
+func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(r.RemoteAddr) {
+		s.jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	ctx := r.Context()
+	switch r.Method {
+	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		var req struct {
+			ChatID string          `json:"chat_id"`
+			Card   json.RawMessage `json:"card"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.jsonError(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		chatID := req.ChatID
+		if chatID == "" {
+			chatID = s.client.ChatID()
+		}
+		if chatID == "" {
+			s.jsonError(w, "chat_id required", http.StatusBadRequest)
+			return
+		}
+		card, err := s.client.CreateAdaptiveCard(ctx, chatID, req.Card)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		s.jsonReply(w, card)
+	default:
+		s.jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleCardByID(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(r.RemoteAddr) {
+		s.jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	ctx := r.Context()
+	cardID := extractID(r.URL.Path, "/api/cards/")
+	switch r.Method {
+	case http.MethodGet:
+		card, err := s.client.GetAdaptiveCard(ctx, cardID)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, card)
+	case http.MethodPut:
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		var card json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&card); err != nil {
+			s.jsonError(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		updated, err := s.client.UpdateAdaptiveCard(ctx, cardID, card)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, updated)
+	case http.MethodDelete:
+		if err := s.client.DeleteAdaptiveCard(ctx, cardID); err != nil {
 			s.jsonError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

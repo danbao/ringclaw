@@ -484,6 +484,53 @@ func (c *Client) DeleteEvent(ctx context.Context, eventID string) error {
 	return err
 }
 
+// --- Adaptive Card CRUD ---
+
+func (c *Client) CreateAdaptiveCard(ctx context.Context, chatID string, card json.RawMessage) (*AdaptiveCard, error) {
+	path := fmt.Sprintf("/team-messaging/v1/chats/%s/adaptive-cards", chatID)
+	resp, err := c.doRequest(ctx, http.MethodPost, path, "application/json", bytes.NewReader(card))
+	if err != nil {
+		return nil, err
+	}
+	var ac AdaptiveCard
+	if err := json.Unmarshal(resp, &ac); err != nil {
+		return nil, fmt.Errorf("parse adaptive card: %w", err)
+	}
+	return &ac, nil
+}
+
+func (c *Client) GetAdaptiveCard(ctx context.Context, cardID string) (*AdaptiveCard, error) {
+	path := fmt.Sprintf("/team-messaging/v1/adaptive-cards/%s", cardID)
+	resp, err := c.doRequest(ctx, http.MethodGet, path, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	var ac AdaptiveCard
+	if err := json.Unmarshal(resp, &ac); err != nil {
+		return nil, fmt.Errorf("parse adaptive card: %w", err)
+	}
+	return &ac, nil
+}
+
+func (c *Client) UpdateAdaptiveCard(ctx context.Context, cardID string, card json.RawMessage) (*AdaptiveCard, error) {
+	path := fmt.Sprintf("/team-messaging/v1/adaptive-cards/%s", cardID)
+	resp, err := c.doRequest(ctx, http.MethodPut, path, "application/json", bytes.NewReader(card))
+	if err != nil {
+		return nil, err
+	}
+	var ac AdaptiveCard
+	if err := json.Unmarshal(resp, &ac); err != nil {
+		return nil, fmt.Errorf("parse adaptive card: %w", err)
+	}
+	return &ac, nil
+}
+
+func (c *Client) DeleteAdaptiveCard(ctx context.Context, cardID string) error {
+	path := fmt.Sprintf("/team-messaging/v1/adaptive-cards/%s", cardID)
+	_, err := c.doRequest(ctx, http.MethodDelete, path, "", nil)
+	return err
+}
+
 func (c *Client) doRequest(ctx context.Context, method, path, contentType string, body io.Reader) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()

@@ -345,6 +345,18 @@ type EventList struct {
 	} `json:"navigation"`
 }
 
+// --- Adaptive Card types ---
+
+// AdaptiveCard represents a Team Messaging adaptive card response.
+type AdaptiveCard struct {
+	ID               string   `json:"id"`
+	CreationTime     string   `json:"creationTime"`
+	LastModifiedTime string   `json:"lastModifiedTime"`
+	Type             string   `json:"type"`
+	Version          string   `json:"version"`
+	ChatIDs          []string `json:"chatIds"`
+}
+
 // Credentials stores RC session data.
 type Credentials struct {
 	ClientID     string `json:"client_id"`
