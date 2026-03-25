@@ -4,6 +4,7 @@ set -e
 REPO="ringclaw/ringclaw"
 BINARY="ringclaw"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+CHANNEL="${1:-}" # alpha, beta, or empty for stable
 
 # Detect OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -22,16 +23,34 @@ esac
 
 echo "Detected: ${OS}/${ARCH}"
 
-# Get latest version (uses redirect from /latest to avoid API rate limits)
-echo "Fetching latest release..."
-VERSION=$(curl -fsSI "https://github.com/${REPO}/releases/latest" 2>/dev/null | grep -i '^location:' | sed 's|.*/tag/||' | tr -d '\r\n')
-
-if [ -z "$VERSION" ]; then
-  echo "Error: could not determine latest version. Is there a release on GitHub?"
-  exit 1
+if [ "$CHANNEL" = "beta" ]; then
+  # Beta: latest build from main branch
+  VERSION="beta-latest"
+  echo "Channel: beta (latest main build)"
+elif [ "$CHANNEL" = "alpha" ]; then
+  # Alpha: specify branch name as second arg, default to latest alpha
+  BRANCH="${2:-}"
+  if [ -n "$BRANCH" ]; then
+    SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g')
+    VERSION="alpha-${SAFE_BRANCH}"
+    echo "Channel: alpha (branch: ${BRANCH})"
+  else
+    echo "Usage: install.sh alpha <branch-name>"
+    echo "Example: install.sh alpha feature/tasks-notes-events"
+    exit 1
+  fi
+else
+  # Stable: latest tagged release
+  echo "Fetching latest release..."
+  VERSION=$(curl -fsSI "https://github.com/${REPO}/releases/latest" 2>/dev/null | grep -i '^location:' | sed 's|.*/tag/||' | tr -d '\r\n')
+  if [ -z "$VERSION" ]; then
+    echo "Error: could not determine latest version. Is there a release on GitHub?"
+    exit 1
+  fi
+  echo "Channel: stable"
 fi
 
-echo "Latest version: ${VERSION}"
+echo "Version: ${VERSION}"
 
 # Download
 FILENAME="${BINARY}_${OS}_${ARCH}"
@@ -54,5 +73,10 @@ fi
 echo ""
 echo "ringclaw ${VERSION} installed to ${INSTALL_DIR}/${BINARY}"
 echo ""
-echo "Get started:"
+echo "Usage:"
 echo "  ringclaw start"
+echo ""
+echo "Install channels:"
+echo "  install.sh              # stable (latest tag)"
+echo "  install.sh beta         # beta (latest main build)"
+echo "  install.sh alpha <branch>  # alpha (specific branch)"
