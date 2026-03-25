@@ -27,20 +27,27 @@ type MessageHandler func(ctx context.Context, client *Client, post Post)
 
 // Monitor manages the WebSocket connection for receiving messages.
 type Monitor struct {
-	client    *Client
-	handler   MessageHandler
-	failures  int
-	sentPosts map[string]time.Time // post ID -> timestamp
-	mu        sync.Mutex
+	client      *Client
+	handler     MessageHandler
+	failures    int
+	sentPosts   map[string]time.Time // post ID -> timestamp
+	lastEvict   time.Time
+	mu          sync.Mutex
 }
 
-const sentPostTTL = 5 * time.Minute
+const (
+	sentPostTTL      = 5 * time.Minute
+	evictInterval    = 1 * time.Minute
+)
 
 // MarkSentPost records a post ID as sent by the bot.
 func (m *Monitor) MarkSentPost(id string) {
 	m.mu.Lock()
 	m.sentPosts[id] = time.Now()
-	m.evictExpiredLocked()
+	if time.Since(m.lastEvict) > evictInterval {
+		m.evictExpiredLocked()
+		m.lastEvict = time.Now()
+	}
 	m.mu.Unlock()
 }
 

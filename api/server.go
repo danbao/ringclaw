@@ -24,10 +24,11 @@ type Server struct {
 
 // rateLimiter is a simple token bucket per-IP rate limiter.
 type rateLimiter struct {
-	mu       sync.Mutex
-	visitors map[string]*visitor
-	rate     int           // max requests per window
-	window   time.Duration
+	mu        sync.Mutex
+	visitors  map[string]*visitor
+	rate      int           // max requests per window
+	window    time.Duration
+	calls     int           // total allow() calls since last cleanup
 }
 
 type visitor struct {
@@ -47,6 +48,17 @@ func (rl *rateLimiter) allow(ip string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 	now := time.Now()
+
+	// Cleanup expired visitors every 100 calls
+	rl.calls++
+	if rl.calls%100 == 0 {
+		for k, v := range rl.visitors {
+			if now.After(v.resetAt) {
+				delete(rl.visitors, k)
+			}
+		}
+	}
+
 	v, ok := rl.visitors[ip]
 	if !ok || now.After(v.resetAt) {
 		rl.visitors[ip] = &visitor{count: 1, resetAt: now.Add(rl.window)}
