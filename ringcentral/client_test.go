@@ -113,6 +113,338 @@ func TestListPosts_Pagination(t *testing.T) {
 	}
 }
 
+// --- Task CRUD tests ---
+
+func TestCreateTask_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/team-messaging/v1/chats/chat1/tasks" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Task{ID: "t1", Subject: "Buy milk", Status: "Pending"})
+	})
+	defer srv.Close()
+
+	task, err := client.CreateTask(context.Background(), "chat1", &CreateTaskRequest{Subject: "Buy milk"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if task.ID != "t1" || task.Subject != "Buy milk" {
+		t.Errorf("got task %+v", task)
+	}
+}
+
+func TestListTasks_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(TaskList{Records: []Task{{ID: "t1"}, {ID: "t2"}}})
+	})
+	defer srv.Close()
+
+	list, err := client.ListTasks(context.Background(), "chat1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Records) != 2 {
+		t.Errorf("expected 2 tasks, got %d", len(list.Records))
+	}
+}
+
+func TestGetTask_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/team-messaging/v1/tasks/t1" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Task{ID: "t1", Subject: "Test", Status: "Pending"})
+	})
+	defer srv.Close()
+
+	task, err := client.GetTask(context.Background(), "t1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if task.ID != "t1" {
+		t.Errorf("expected t1, got %s", task.ID)
+	}
+}
+
+func TestUpdateTask_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("expected PATCH, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Task{ID: "t1", Subject: "Updated"})
+	})
+	defer srv.Close()
+
+	task, err := client.UpdateTask(context.Background(), "t1", &UpdateTaskRequest{Subject: "Updated"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if task.Subject != "Updated" {
+		t.Errorf("expected 'Updated', got %q", task.Subject)
+	}
+}
+
+func TestDeleteTask_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	defer srv.Close()
+
+	err := client.DeleteTask(context.Background(), "t1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompleteTask_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/team-messaging/v1/tasks/t1/complete" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	defer srv.Close()
+
+	err := client.CompleteTask(context.Background(), "t1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// --- Note CRUD tests ---
+
+func TestCreateNote_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Note{ID: "n1", Title: "Meeting Notes", Status: "Draft"})
+	})
+	defer srv.Close()
+
+	note, err := client.CreateNote(context.Background(), "chat1", &CreateNoteRequest{Title: "Meeting Notes"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if note.ID != "n1" {
+		t.Errorf("expected n1, got %s", note.ID)
+	}
+}
+
+func TestListNotes_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(NoteList{Records: []Note{{ID: "n1"}}})
+	})
+	defer srv.Close()
+
+	list, err := client.ListNotes(context.Background(), "chat1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Records) != 1 {
+		t.Errorf("expected 1 note, got %d", len(list.Records))
+	}
+}
+
+func TestGetNote_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Note{ID: "n1", Title: "Test", Status: "Active"})
+	})
+	defer srv.Close()
+
+	note, err := client.GetNote(context.Background(), "n1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if note.Title != "Test" {
+		t.Errorf("expected 'Test', got %q", note.Title)
+	}
+}
+
+func TestUpdateNote_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("expected PATCH, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Note{ID: "n1", Title: "Updated"})
+	})
+	defer srv.Close()
+
+	note, err := client.UpdateNote(context.Background(), "n1", &UpdateNoteRequest{Title: "Updated"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if note.Title != "Updated" {
+		t.Errorf("expected 'Updated', got %q", note.Title)
+	}
+}
+
+func TestDeleteNote_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	defer srv.Close()
+
+	if err := client.DeleteNote(context.Background(), "n1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPublishNote_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/team-messaging/v1/notes/n1/publish" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	defer srv.Close()
+
+	if err := client.PublishNote(context.Background(), "n1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// --- Event CRUD tests ---
+
+func TestCreateEvent_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Event{ID: "e1", Title: "Team Meeting"})
+	})
+	defer srv.Close()
+
+	event, err := client.CreateEvent(context.Background(), &CreateEventRequest{
+		Title:     "Team Meeting",
+		StartTime: "2026-03-26T14:00:00Z",
+		EndTime:   "2026-03-26T15:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if event.ID != "e1" {
+		t.Errorf("expected e1, got %s", event.ID)
+	}
+}
+
+func TestListEvents_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(EventList{Records: []Event{{ID: "e1"}, {ID: "e2"}}})
+	})
+	defer srv.Close()
+
+	list, err := client.ListEvents(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list.Records) != 2 {
+		t.Errorf("expected 2 events, got %d", len(list.Records))
+	}
+}
+
+func TestGetEvent_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Event{ID: "e1", Title: "Standup"})
+	})
+	defer srv.Close()
+
+	event, err := client.GetEvent(context.Background(), "e1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if event.Title != "Standup" {
+		t.Errorf("expected 'Standup', got %q", event.Title)
+	}
+}
+
+func TestUpdateEvent_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(Event{ID: "e1", Title: "Updated Meeting"})
+	})
+	defer srv.Close()
+
+	event, err := client.UpdateEvent(context.Background(), "e1", &UpdateEventRequest{Title: "Updated Meeting"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if event.Title != "Updated Meeting" {
+		t.Errorf("expected 'Updated Meeting', got %q", event.Title)
+	}
+}
+
+func TestDeleteEvent_Success(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	defer srv.Close()
+
+	if err := client.DeleteEvent(context.Background(), "e1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// --- Error cases ---
+
+func TestCRUD_HTTPError(t *testing.T) {
+	client, srv := newTestClientWithServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("server error"))
+	})
+	defer srv.Close()
+
+	ctx := context.Background()
+
+	if _, err := client.ListTasks(ctx, "c1"); err == nil {
+		t.Error("ListTasks: expected error")
+	}
+	if _, err := client.CreateTask(ctx, "c1", &CreateTaskRequest{Subject: "x"}); err == nil {
+		t.Error("CreateTask: expected error")
+	}
+	if _, err := client.ListNotes(ctx, "c1"); err == nil {
+		t.Error("ListNotes: expected error")
+	}
+	if _, err := client.CreateNote(ctx, "c1", &CreateNoteRequest{Title: "x"}); err == nil {
+		t.Error("CreateNote: expected error")
+	}
+	if _, err := client.ListEvents(ctx); err == nil {
+		t.Error("ListEvents: expected error")
+	}
+	if _, err := client.CreateEvent(ctx, &CreateEventRequest{Title: "x"}); err == nil {
+		t.Error("CreateEvent: expected error")
+	}
+}
+
 func TestInferContentType(t *testing.T) {
 	tests := []struct {
 		fileName string

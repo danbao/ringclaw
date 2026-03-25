@@ -1,6 +1,104 @@
 package messaging
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ringclaw/ringclaw/ringcentral"
+)
+
+func newTestActionClient(handler http.HandlerFunc) (*ringcentral.Client, *httptest.Server) {
+	srv := httptest.NewServer(handler)
+	creds := &ringcentral.Credentials{
+		ClientID:     "id",
+		ClientSecret: "secret",
+		JWTToken:     "jwt",
+		ChatID:       "test-chat",
+		ServerURL:    srv.URL,
+	}
+	client := ringcentral.NewClient(creds)
+	client.Auth().SetTokenForTest("test-token", time.Now().Add(1*time.Hour))
+	return client, srv
+}
+
+func TestHandleActionCommand_TaskList(t *testing.T) {
+	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"records": []map[string]string{{"id": "t1", "subject": "Buy milk", "status": "Pending"}},
+		})
+	})
+	defer srv.Close()
+
+	result := HandleActionCommand(context.Background(), client, "c1", "/task list")
+	if !strings.Contains(result, "t1") || !strings.Contains(result, "Buy milk") {
+		t.Errorf("unexpected result: %s", result)
+	}
+}
+
+func TestHandleActionCommand_TaskCreate(t *testing.T) {
+	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"id": "t1", "subject": "New task"})
+	})
+	defer srv.Close()
+
+	result := HandleActionCommand(context.Background(), client, "c1", "/task create New task")
+	if !strings.Contains(result, "created") {
+		t.Errorf("unexpected result: %s", result)
+	}
+}
+
+func TestHandleActionCommand_NoteCreate(t *testing.T) {
+	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"id": "n1", "title": "Meeting", "status": "Draft"})
+	})
+	defer srv.Close()
+
+	result := HandleActionCommand(context.Background(), client, "c1", "/note create Meeting | some body")
+	if !strings.Contains(result, "n1") {
+		t.Errorf("unexpected result: %s", result)
+	}
+}
+
+func TestHandleActionCommand_EventCreate(t *testing.T) {
+	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"id": "e1", "title": "Standup"})
+	})
+	defer srv.Close()
+
+	result := HandleActionCommand(context.Background(), client, "c1", "/event create Standup 2026-03-26T14:00:00Z 2026-03-26T15:00:00Z")
+	if !strings.Contains(result, "created") {
+		t.Errorf("unexpected result: %s", result)
+	}
+}
+
+func TestHandleActionCommand_UnknownSubcommand(t *testing.T) {
+	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {})
+	defer srv.Close()
+
+	result := HandleActionCommand(context.Background(), client, "c1", "/task unknown")
+	if !strings.Contains(result, "Usage") {
+		t.Errorf("expected usage help, got: %s", result)
+	}
+}
+
+func TestHandleActionCommand_MissingSubcommand(t *testing.T) {
+	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {})
+	defer srv.Close()
+
+	result := HandleActionCommand(context.Background(), client, "c1", "/task")
+	if !strings.Contains(result, "Usage") {
+		t.Errorf("expected usage help, got: %s", result)
+	}
+}
 
 func TestIsActionCommand(t *testing.T) {
 	tests := []struct {
