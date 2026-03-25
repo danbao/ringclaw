@@ -190,6 +190,161 @@ type CreateChatRequest struct {
 	Members []ChatMember `json:"members"`
 }
 
+// --- Task types ---
+
+// TaskAssignee represents a task assignee.
+type TaskAssignee struct {
+	ID     string `json:"id"`
+	Status string `json:"status,omitempty"` // Pending, Completed
+}
+
+// TaskRecurrence holds recurrence settings for a task.
+type TaskRecurrence struct {
+	Schedule        string `json:"schedule"`                  // None, Daily, Weekdays, Weekly, Monthly, Yearly
+	EndingCondition string `json:"endingCondition"`           // None, Count, Date
+	EndingAfter     int    `json:"endingAfter,omitempty"`
+	EndingOn        string `json:"endingOn,omitempty"`
+}
+
+// CreateTaskRequest is the body for creating a task.
+type CreateTaskRequest struct {
+	Subject              string         `json:"subject"`
+	Assignees            []TaskAssignee `json:"assignees,omitempty"`
+	CompletenessCondition string        `json:"completenessCondition,omitempty"` // Simple, AllAssignees, Percentage
+	StartDate            string         `json:"startDate,omitempty"`
+	DueDate              string         `json:"dueDate,omitempty"`
+	Color                string         `json:"color,omitempty"`
+	Section              string         `json:"section,omitempty"`
+	Description          string         `json:"description,omitempty"`
+}
+
+// UpdateTaskRequest is the body for updating a task.
+type UpdateTaskRequest struct {
+	Subject     string `json:"subject,omitempty"`
+	Description string `json:"description,omitempty"`
+	DueDate     string `json:"dueDate,omitempty"`
+	Color       string `json:"color,omitempty"`
+	Status      string `json:"status,omitempty"`
+}
+
+// Task represents a Team Messaging task.
+type Task struct {
+	ID                   string         `json:"id"`
+	CreationTime         string         `json:"creationTime"`
+	LastModifiedTime     string         `json:"lastModifiedTime"`
+	Type                 string         `json:"type"`
+	Creator              TaskAssignee   `json:"creator"`
+	ChatIDs              []string       `json:"chatIds"`
+	Status               string         `json:"status"` // Pending, InProgress, Completed
+	Subject              string         `json:"subject"`
+	Assignees            []TaskAssignee `json:"assignees"`
+	CompletenessCondition string        `json:"completenessCondition"`
+	StartDate            string         `json:"startDate"`
+	DueDate              string         `json:"dueDate"`
+	Color                string         `json:"color"`
+	Section              string         `json:"section"`
+	Description          string         `json:"description"`
+}
+
+// TaskList is the response from listing tasks.
+type TaskList struct {
+	Records    []Task `json:"records"`
+	Navigation struct {
+		NextPageToken string `json:"nextPageToken"`
+	} `json:"navigation"`
+}
+
+// --- Note types ---
+
+// CreateNoteRequest is the body for creating a note.
+type CreateNoteRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body,omitempty"`
+}
+
+// UpdateNoteRequest is the body for updating a note.
+type UpdateNoteRequest struct {
+	Title string `json:"title,omitempty"`
+	Body  string `json:"body,omitempty"`
+}
+
+// Note represents a Team Messaging note.
+type Note struct {
+	ID               string `json:"id"`
+	Title            string `json:"title"`
+	ChatIDs          []string `json:"chatIds"`
+	Preview          string `json:"preview"`
+	Status           string `json:"status"` // Active, Draft
+	CreationTime     string `json:"creationTime"`
+	LastModifiedTime string `json:"lastModifiedTime"`
+	Type             string `json:"type"`
+	Creator          struct {
+		ID string `json:"id"`
+	} `json:"creator"`
+}
+
+// NoteList is the response from listing notes.
+type NoteList struct {
+	Records    []Note `json:"records"`
+	Navigation struct {
+		NextPageToken string `json:"nextPageToken"`
+	} `json:"navigation"`
+}
+
+// --- Event types ---
+
+// EventRecurrence holds recurrence settings for an event.
+type EventRecurrence struct {
+	Schedule        string `json:"schedule"`                  // None, Day, Weekday, Week, Month, Year
+	EndingCondition string `json:"endingCondition"`           // None, Count, Date
+	EndingAfter     int    `json:"endingAfter,omitempty"`
+	EndingOn        string `json:"endingOn,omitempty"`
+}
+
+// CreateEventRequest is the body for creating an event.
+type CreateEventRequest struct {
+	Title       string           `json:"title"`
+	StartTime   string           `json:"startTime"`
+	EndTime     string           `json:"endTime"`
+	AllDay      bool             `json:"allDay,omitempty"`
+	Color       string           `json:"color,omitempty"`
+	Location    string           `json:"location,omitempty"`
+	Description string           `json:"description,omitempty"`
+	Recurrence  *EventRecurrence `json:"recurrence,omitempty"`
+}
+
+// UpdateEventRequest is the body for updating an event.
+type UpdateEventRequest struct {
+	Title       string `json:"title,omitempty"`
+	StartTime   string `json:"startTime,omitempty"`
+	EndTime     string `json:"endTime,omitempty"`
+	Color       string `json:"color,omitempty"`
+	Location    string `json:"location,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// Event represents a Team Messaging calendar event.
+type Event struct {
+	ID          string `json:"id"`
+	CreatorID   string `json:"creatorId"`
+	Title       string `json:"title"`
+	StartTime   string `json:"startTime"`
+	EndTime     string `json:"endTime"`
+	AllDay      bool   `json:"allDay"`
+	Color       string `json:"color"`
+	Location    string `json:"location"`
+	Description string `json:"description"`
+	Type        string `json:"type"`
+}
+
+// EventList is the response from listing events.
+type EventList struct {
+	Records    []Event `json:"records"`
+	Navigation struct {
+		NextPageToken string `json:"nextPageToken"`
+	} `json:"navigation"`
+}
+
 // Credentials stores RC session data.
 type Credentials struct {
 	ClientID     string `json:"client_id"`

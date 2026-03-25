@@ -180,6 +180,15 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 		return
 	}
 
+	// Action commands: /task, /note, /event
+	if IsActionCommand(text) {
+		reply := HandleActionCommand(ctx, client, chatID, text)
+		if err := SendTextReply(ctx, client, chatID, reply); err != nil {
+			slog.Error("failed to send action reply", "component", "handler", "error", err)
+		}
+		return
+	}
+
 	// Route: "/agentname message" -> specific agent, otherwise -> default
 	agentName, message := parseCommand(text)
 
@@ -390,6 +399,10 @@ func buildHelpText() string {
 /agentname message - Send message to a specific agent
 /status - Show current agent info
 /help - Show this help message
+
+/task list|create|get|update|delete|complete
+/note list|create|get|update|delete
+/event list|create|get|update|delete
 
 Aliases: /cc(claude) /cx(codex) /cs(cursor) /km(kimi) /gm(gemini) /oc(openclaw) /ocd(opencode) /pi(pi) /cp(copilot) /dr(droid) /if(iflow) /kr(kiro) /qw(qwen)`
 }

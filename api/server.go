@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -94,6 +95,19 @@ type SendRequest struct {
 func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/send", s.handleSend)
+
+	// Task endpoints
+	mux.HandleFunc("/api/tasks", s.handleTasks)
+	mux.HandleFunc("/api/tasks/", s.handleTaskByID)
+
+	// Note endpoints
+	mux.HandleFunc("/api/notes", s.handleNotes)
+	mux.HandleFunc("/api/notes/", s.handleNoteByID)
+
+	// Event endpoints
+	mux.HandleFunc("/api/events", s.handleEvents)
+	mux.HandleFunc("/api/events/", s.handleEventByID)
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "ok")
@@ -167,4 +181,293 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *Server) jsonReply(w http.ResponseWriter, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(v)
+}
+
+func (s *Server) jsonError(w http.ResponseWriter, msg string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// extractID gets the last path segment: /api/tasks/123 -> 123
+func extractID(path, prefix string) string {
+	return strings.TrimPrefix(path, prefix)
+}
+
+// --- Task HTTP handlers ---
+
+func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(r.RemoteAddr) {
+		s.jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	ctx := r.Context()
+	switch r.Method {
+	case http.MethodGet:
+		chatID := r.URL.Query().Get("chat_id")
+		if chatID == "" {
+			chatID = s.client.ChatID()
+		}
+		if chatID == "" {
+			s.jsonError(w, "chat_id required", http.StatusBadRequest)
+			return
+		}
+		list, err := s.client.ListTasks(ctx, chatID)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, list)
+	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		var req struct {
+			ChatID string `json:"chat_id"`
+			ringcentral.CreateTaskRequest
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.jsonError(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		chatID := req.ChatID
+		if chatID == "" {
+			chatID = s.client.ChatID()
+		}
+		task, err := s.client.CreateTask(ctx, chatID, &req.CreateTaskRequest)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		s.jsonReply(w, task)
+	default:
+		s.jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleTaskByID(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(r.RemoteAddr) {
+		s.jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	ctx := r.Context()
+	path := r.URL.Path
+
+	// /api/tasks/{id}/complete
+	if strings.HasSuffix(path, "/complete") {
+		taskID := extractID(strings.TrimSuffix(path, "/complete"), "/api/tasks/")
+		if r.Method != http.MethodPost {
+			s.jsonError(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := s.client.CompleteTask(ctx, taskID); err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, map[string]string{"status": "completed"})
+		return
+	}
+
+	taskID := extractID(path, "/api/tasks/")
+	switch r.Method {
+	case http.MethodGet:
+		task, err := s.client.GetTask(ctx, taskID)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, task)
+	case http.MethodPatch:
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		var req ringcentral.UpdateTaskRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.jsonError(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		task, err := s.client.UpdateTask(ctx, taskID, &req)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, task)
+	case http.MethodDelete:
+		if err := s.client.DeleteTask(ctx, taskID); err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		s.jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// --- Note HTTP handlers ---
+
+func (s *Server) handleNotes(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(r.RemoteAddr) {
+		s.jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	ctx := r.Context()
+	switch r.Method {
+	case http.MethodGet:
+		chatID := r.URL.Query().Get("chat_id")
+		if chatID == "" {
+			chatID = s.client.ChatID()
+		}
+		if chatID == "" {
+			s.jsonError(w, "chat_id required", http.StatusBadRequest)
+			return
+		}
+		list, err := s.client.ListNotes(ctx, chatID)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, list)
+	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		var req struct {
+			ChatID string `json:"chat_id"`
+			ringcentral.CreateNoteRequest
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.jsonError(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		chatID := req.ChatID
+		if chatID == "" {
+			chatID = s.client.ChatID()
+		}
+		note, err := s.client.CreateNote(ctx, chatID, &req.CreateNoteRequest)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// Auto-publish
+		if pubErr := s.client.PublishNote(ctx, note.ID); pubErr != nil {
+			slog.Error("auto-publish note failed", "component", "api", "noteID", note.ID, "error", pubErr)
+		}
+		w.WriteHeader(http.StatusCreated)
+		s.jsonReply(w, note)
+	default:
+		s.jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleNoteByID(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(r.RemoteAddr) {
+		s.jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	ctx := r.Context()
+	noteID := extractID(r.URL.Path, "/api/notes/")
+	switch r.Method {
+	case http.MethodGet:
+		note, err := s.client.GetNote(ctx, noteID)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, note)
+	case http.MethodPatch:
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		var req ringcentral.UpdateNoteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.jsonError(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		note, err := s.client.UpdateNote(ctx, noteID, &req)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, note)
+	case http.MethodDelete:
+		if err := s.client.DeleteNote(ctx, noteID); err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		s.jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// --- Event HTTP handlers ---
+
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(r.RemoteAddr) {
+		s.jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	ctx := r.Context()
+	switch r.Method {
+	case http.MethodGet:
+		list, err := s.client.ListEvents(ctx)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, list)
+	case http.MethodPost:
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		var req ringcentral.CreateEventRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.jsonError(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		event, err := s.client.CreateEvent(ctx, &req)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		s.jsonReply(w, event)
+	default:
+		s.jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleEventByID(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.allow(r.RemoteAddr) {
+		s.jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
+		return
+	}
+	ctx := r.Context()
+	eventID := extractID(r.URL.Path, "/api/events/")
+	switch r.Method {
+	case http.MethodGet:
+		event, err := s.client.GetEvent(ctx, eventID)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, event)
+	case http.MethodPut:
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		var req ringcentral.UpdateEventRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.jsonError(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		event, err := s.client.UpdateEvent(ctx, eventID, &req)
+		if err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.jsonReply(w, event)
+	case http.MethodDelete:
+		if err := s.client.DeleteEvent(ctx, eventID); err != nil {
+			s.jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		s.jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
