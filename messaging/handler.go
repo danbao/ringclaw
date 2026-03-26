@@ -97,6 +97,21 @@ func (h *Handler) getAgent(ctx context.Context, name string) (agent.Agent, error
 	return ag, nil
 }
 
+// isKnownAgent checks if a name matches a configured agent (started or available via factory).
+func (h *Handler) isKnownAgent(name string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if _, ok := h.agents[name]; ok {
+		return true
+	}
+	for _, m := range h.agentMetas {
+		if m.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // getDefaultAgent returns the default agent (may be nil if not ready yet).
 func (h *Handler) getDefaultAgent() agent.Agent {
 	h.mu.RLock()
@@ -198,9 +213,23 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 
 	if agentName != "" {
 		if message == "" {
-			reply = h.switchDefault(ctx, agentName)
+			// "/xxx" with no message:
+			// known agent -> switch default; unknown -> forward to default agent
+			if h.isKnownAgent(agentName) {
+				reply = h.switchDefault(ctx, agentName)
+			} else {
+				agentName = ""
+				needsAgent = true
+			}
 		} else {
-			needsAgent = true
+			// "/xxx message":
+			// known agent -> route to it; unknown -> forward to default agent
+			if !h.isKnownAgent(agentName) {
+				agentName = ""
+				needsAgent = true
+			} else {
+				needsAgent = true
+			}
 		}
 	} else {
 		needsAgent = true
