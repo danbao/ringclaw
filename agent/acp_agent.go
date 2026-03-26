@@ -496,7 +496,10 @@ func (a *ACPAgent) handleSessionUpdate(params json.RawMessage) {
 		return
 	}
 
-	slog.Debug("session/update", "component", "acp", "session", p.SessionID, "type", p.Update.SessionUpdate, "text_len", len(p.Update.Text), "content_len", len(p.Update.Content))
+	// Filter noisy thought chunks from logs (ported from weclaw 39015a5)
+	if p.Update.SessionUpdate != "agent_thought_chunk" {
+		slog.Debug("session/update", "component", "acp", "session", p.SessionID, "type", p.Update.SessionUpdate, "text_len", len(p.Update.Text), "content_len", len(p.Update.Content))
+	}
 
 	a.notifyMu.Lock()
 	ch, ok := a.notifyCh[p.SessionID]
