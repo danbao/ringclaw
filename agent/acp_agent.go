@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ type ACPAgent struct {
 	model        string
 	systemPrompt string
 	cwd          string
+	env          map[string]string
 
 	mu       sync.Mutex
 	cmd      *exec.Cmd
@@ -40,15 +42,17 @@ type ACPAgent struct {
 
 	stderr         *acpStderrWriter // captures stderr for error reporting
 	droppedUpdates atomic.Int64     // counter for dropped notification updates
+	loggedMethods  sync.Map         // tracks already-logged unhandled methods
 }
 
 // ACPAgentConfig holds configuration for the ACP agent.
 type ACPAgentConfig struct {
-	Command      string   // path to ACP agent binary (claude-agent-acp, codex-acp, cursor agent, etc.)
-	Args         []string // extra args for command (e.g. ["acp"] for cursor)
+	Command      string            // path to ACP agent binary (claude-agent-acp, codex-acp, cursor agent, etc.)
+	Args         []string          // extra args for command (e.g. ["acp"] for cursor)
 	Model        string
 	SystemPrompt string
-	Cwd          string // working directory
+	Cwd          string            // working directory
+	Env          map[string]string // extra environment variables
 }
 
 // --- JSON-RPC types ---
@@ -151,6 +155,7 @@ func NewACPAgent(cfg ACPAgentConfig) *ACPAgent {
 		model:        cfg.Model,
 		systemPrompt: cfg.SystemPrompt,
 		cwd:          cfg.Cwd,
+		env:          cfg.Env,
 		sessions:     make(map[string]string),
 		pending:      make(map[int64]chan *rpcResponse),
 		notifyCh:     make(map[string]chan *sessionUpdate),
@@ -167,6 +172,14 @@ func (a *ACPAgent) Start(ctx context.Context) error {
 
 	a.cmd = exec.CommandContext(ctx, a.command, a.args...)
 	a.cmd.Dir = a.cwd
+	if len(a.env) > 0 {
+		cmdEnv, err := mergeEnv(os.Environ(), a.env)
+		if err != nil {
+			a.mu.Unlock()
+			return fmt.Errorf("build acp env: %w", err)
+		}
+		a.cmd.Env = cmdEnv
+	}
 	// Capture stderr for debugging and error reporting
 	a.stderr = &acpStderrWriter{prefix: "[acp-stderr]"}
 	a.cmd.Stderr = a.stderr
@@ -243,6 +256,21 @@ func (a *ACPAgent) Stop() {
 	a.cmd.Process.Kill()
 	a.cmd.Wait()
 	a.started = false
+}
+
+// ResetSession clears the existing session for the given conversationID and
+// immediately creates a new one, returning the new session ID.
+func (a *ACPAgent) ResetSession(ctx context.Context, conversationID string) (string, error) {
+	a.mu.Lock()
+	delete(a.sessions, conversationID)
+	a.mu.Unlock()
+	slog.Info("session reset, creating new session", "component", "acp", "conversation", conversationID)
+
+	sessionID, _, err := a.getOrCreateSession(ctx, conversationID)
+	if err != nil {
+		return "", fmt.Errorf("create new session: %w", err)
+	}
+	return sessionID, nil
 }
 
 // Chat sends a message and returns the full response.
@@ -461,11 +489,14 @@ func (a *ACPAgent) readLoop() {
 
 		default:
 			if msg.Method != "" {
-				raw := line
-				if len(raw) > 200 {
-					raw = raw[:200]
+				// Only log each unhandled method once to avoid noise
+				if _, loaded := a.loggedMethods.LoadOrStore(msg.Method, true); !loaded {
+					raw := line
+					if len(raw) > 200 {
+						raw = raw[:200]
+					}
+					slog.Debug("unhandled method", "component", "acp", "method", msg.Method, "raw", raw)
 				}
-				slog.Debug("unhandled method", "component", "acp", "method", msg.Method, "raw", raw)
 			}
 		}
 	}
@@ -496,7 +527,10 @@ func (a *ACPAgent) handleSessionUpdate(params json.RawMessage) {
 		return
 	}
 
-	slog.Debug("session/update", "component", "acp", "session", p.SessionID, "type", p.Update.SessionUpdate, "text_len", len(p.Update.Text), "content_len", len(p.Update.Content))
+	// Filter noisy thought chunks from logs (ported from weclaw 39015a5)
+	if p.Update.SessionUpdate != "agent_thought_chunk" {
+		slog.Debug("session/update", "component", "acp", "session", p.SessionID, "type", p.Update.SessionUpdate, "text_len", len(p.Update.Text), "content_len", len(p.Update.Content))
+	}
 
 	a.notifyMu.Lock()
 	ch, ok := a.notifyCh[p.SessionID]
