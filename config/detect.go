@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -65,7 +66,7 @@ func DetectAndConfigure(cfg *Config) bool {
 			continue
 		}
 
-		path, err := exec.LookPath(candidate.Binary)
+		path, err := lookPath(candidate.Binary)
 		if err != nil {
 			continue
 		}
@@ -209,4 +210,32 @@ func loadOpenclawGateway() (gwURL, gwToken, gwPassword string) {
 func agentExists(cfg *Config, name string) bool {
 	_, ok := cfg.Agents[name]
 	return ok
+}
+
+// lookPath finds a binary by name. It first tries exec.LookPath (fast, uses
+// current PATH). If that fails, it falls back to resolving via a login shell
+// which sources the user's profile (~/.zshrc, ~/.bashrc) — this picks up
+// binaries installed through version managers like nvm, mise, etc. that only
+// add their paths in interactive shells.
+//
+// Ported from github.com/fastclaw-ai/weclaw commit b7a2a64.
+func lookPath(binary string) (string, error) {
+	if p, err := exec.LookPath(binary); err == nil {
+		return p, nil
+	}
+
+	shell := "zsh"
+	if runtime.GOOS != "darwin" {
+		shell = "bash"
+	}
+	out, err := exec.Command(shell, "-lic", "which "+binary).Output()
+	if err != nil {
+		return "", fmt.Errorf("not found: %s", binary)
+	}
+	p := strings.TrimSpace(string(out))
+	if p == "" || strings.Contains(p, "not found") {
+		return "", fmt.Errorf("not found: %s", binary)
+	}
+	slog.Info("resolved via login shell", "component", "config", "binary", binary, "path", p)
+	return p, nil
 }
