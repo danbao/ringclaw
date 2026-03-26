@@ -94,6 +94,9 @@ type Agent interface {
 	// (CLI mode) or is not applicable (HTTP mode).
 	ResetSession(ctx context.Context, conversationID string) (string, error)
 
+	// SetCwd changes the working directory for subsequent operations.
+	SetCwd(cwd string)
+
 	// Info returns metadata about this agent.
 	Info() AgentInfo
 }

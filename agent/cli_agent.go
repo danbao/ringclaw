@@ -72,6 +72,13 @@ func (a *CLIAgent) Info() AgentInfo {
 	}
 }
 
+// SetCwd changes the working directory for subsequent CLI invocations.
+func (a *CLIAgent) SetCwd(cwd string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cwd = cwd
+}
+
 // ResetSession clears the existing session for the given conversationID.
 // Returns an empty string because the new session ID is only known after the
 // next Chat call (claude assigns it during the conversation).

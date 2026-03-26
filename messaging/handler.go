@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -239,6 +241,12 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 		return
 	} else if text == "/new" || text == "/clear" {
 		reply := h.resetDefaultSession(ctx, post.CreatorID)
+		if err := SendTextReply(ctx, client, chatID, reply); err != nil {
+			slog.Error("failed to send reply", "component", "handler", "error", err)
+		}
+		return
+	} else if strings.HasPrefix(text, "/cwd") {
+		reply := h.handleCwd(text)
 		if err := SendTextReply(ctx, client, chatID, reply); err != nil {
 			slog.Error("failed to send reply", "component", "handler", "error", err)
 		}
@@ -505,6 +513,61 @@ func (h *Handler) resetDefaultSession(ctx context.Context, userID string) string
 	return fmt.Sprintf("New %s session created", name)
 }
 
+// handleCwd handles the /cwd command. Updates the working directory for all running agents.
+//
+// Ported from github.com/fastclaw-ai/weclaw commits 2b24d5d + 6df63a9.
+func (h *Handler) handleCwd(text string) string {
+	arg := strings.TrimSpace(strings.TrimPrefix(text, "/cwd"))
+	if arg == "" {
+		ag := h.getDefaultAgent()
+		if ag == nil {
+			return "No agent running."
+		}
+		info := ag.Info()
+		return fmt.Sprintf("cwd: (check agent config)\nagent: %s", info.Name)
+	}
+
+	// Expand ~ to home directory (fix: use arg[2:] not arg[1:] for ~/path)
+	if arg == "~" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			arg = home
+		}
+	} else if strings.HasPrefix(arg, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			arg = filepath.Join(home, arg[2:])
+		}
+	}
+
+	absPath, err := filepath.Abs(arg)
+	if err != nil {
+		return fmt.Sprintf("Invalid path: %v", err)
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return fmt.Sprintf("Path not found: %s", absPath)
+	}
+	if !info.IsDir() {
+		return fmt.Sprintf("Not a directory: %s", absPath)
+	}
+
+	h.mu.RLock()
+	agents := make(map[string]agent.Agent, len(h.agents))
+	for name, ag := range h.agents {
+		agents[name] = ag
+	}
+	h.mu.RUnlock()
+
+	for name, ag := range agents {
+		ag.SetCwd(absPath)
+		slog.Info("updated cwd for agent", "component", "handler", "agent", name, "cwd", absPath)
+	}
+
+	return fmt.Sprintf("cwd: %s", absPath)
+}
+
 func (h *Handler) buildStatus() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -584,6 +647,7 @@ func buildHelpText() string {
 @agent msg or /agent msg - Send to a specific agent
 @a @b msg - Broadcast to multiple agents
 /new or /clear - Start a new session
+/cwd /path - Switch workspace directory
 /status - Show current agent info
 /help - Show this help message
 

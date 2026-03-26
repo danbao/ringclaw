@@ -258,6 +258,13 @@ func (a *ACPAgent) Stop() {
 	a.started = false
 }
 
+// SetCwd changes the working directory for subsequent sessions.
+func (a *ACPAgent) SetCwd(cwd string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cwd = cwd
+}
+
 // ResetSession clears the existing session for the given conversationID and
 // immediately creates a new one, returning the new session ID.
 func (a *ACPAgent) ResetSession(ctx context.Context, conversationID string) (string, error) {

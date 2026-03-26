@@ -67,6 +67,9 @@ func (a *HTTPAgent) Info() AgentInfo {
 	}
 }
 
+// SetCwd is a no-op for HTTP agents (they have no working directory).
+func (a *HTTPAgent) SetCwd(_ string) {}
+
 // ResetSession clears the conversation history for the given conversationID.
 // HTTP agents have no server-side session ID, so an empty string is returned.
 func (a *HTTPAgent) ResetSession(_ context.Context, conversationID string) (string, error) {
