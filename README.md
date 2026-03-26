@@ -42,6 +42,14 @@ That's it. On first start, RingClaw will:
 3. Create a JWT credential under your app
 4. Find the chat ID of the conversation you want the bot to listen in (use the [API Explorer](https://developers.ringcentral.com/api-reference/Chats/listGlipChatsNew) to list chats)
 
+**Install channels:**
+
+```bash
+curl -sSL .../install.sh | sh                 # stable (latest tag)
+curl -sSL .../install.sh | sh -s -- beta      # beta (latest main build)
+curl -sSL .../install.sh | sh -s -- alpha feature/my-branch  # alpha (specific branch)
+```
+
 > **macOS note:** The installer and `ringclaw update` automatically clear Gatekeeper quarantine attributes (`com.apple.quarantine`, `com.apple.provenance`), so the binary won't be killed after download.
 
 ### Other install methods
@@ -97,6 +105,10 @@ Send these as messages in your RingCentral chat:
 | `/claude` | Switch default agent to Claude |
 | `/new` or `/clear` | Reset current agent session |
 | `/cwd /path/to/project` | Switch workspace directory for all agents |
+| `/task list\|create\|get\|update\|delete\|complete` | Manage tasks |
+| `/note list\|create\|get\|update\|delete` | Manage notes |
+| `/event list\|create\|get\|update\|delete` | Manage calendar events |
+| `/card get\|delete` | Manage adaptive cards |
 | `/info` | Show current agent info (alias: `/status`) |
 | `/help` | Show help message |
 
@@ -165,6 +177,55 @@ Then `/gpt hello` or `@ai hello` will route to Claude. RingClaw warns on startup
 
 Tilde (`~`) is expanded to the home directory. The new working directory applies to all running agents immediately.
 
+## Tasks, Notes & Calendar Events
+
+Full CRUD for RingCentral Team Messaging resources directly from chat:
+
+```
+/task create Fix login bug         # create a task
+/task list                         # list tasks in this chat
+/task complete <id>                # mark task done
+/note create Meeting Notes | body  # create a note (auto-published)
+/event list                        # list calendar events
+```
+
+Each command supports: `list`, `create`, `get`, `update`, `delete`. Tasks also support `complete`.
+
+## Adaptive Cards
+
+AI agents can generate [Adaptive Cards](https://adaptivecards.io/) for rich structured display (progress reports, dashboards, forms, etc.). When the agent includes an `ACTION:CARD` block in its response, RingClaw automatically posts the card to the chat:
+
+```
+ACTION:CARD
+{"type":"AdaptiveCard","version":"1.3","body":[{"type":"TextBlock","text":"Sprint Status","weight":"bolder"},{"type":"FactSet","facts":[{"title":"Completed","value":"12"},{"title":"Remaining","value":"3"}]}]}
+END_ACTION
+```
+
+Manage cards via chat commands:
+
+```
+/card get <id>       # view card details
+/card delete <id>    # delete a card
+```
+
+## AI-Driven Actions
+
+AI agents can automatically create notes, tasks, events, and adaptive cards during conversation. When a user's request implies creating these resources, the agent appends ACTION blocks to its response and RingClaw executes them via the RC API:
+
+```
+ACTION:NOTE title=Meeting Summary
+Key decisions from today's standup...
+END_ACTION
+
+ACTION:TASK subject=Update deployment scripts
+END_ACTION
+
+ACTION:EVENT title=Sprint Review start=2026-04-01T14:00:00Z end=2026-04-01T15:00:00Z
+END_ACTION
+```
+
+Actions can target a different chat via `chatid=<id>` parameter. No configuration needed — the action prompt is injected automatically.
+
 ## Media Messages
 
 RingClaw supports sending images, videos, and files to RingCentral chats.
@@ -223,6 +284,20 @@ curl -X POST http://127.0.0.1:18011/api/send \
 Supported media types: images (png, jpg, gif, webp), videos (mp4, mov), files (pdf, doc, zip, etc.).
 
 Set `RINGCLAW_API_ADDR` to change the listen address (e.g. `0.0.0.0:18011`).
+
+**Resource APIs** (Tasks, Notes, Events, Cards):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET/POST` | `/api/tasks` | List / create tasks |
+| `GET/PATCH/DELETE` | `/api/tasks/{id}` | Get / update / delete task |
+| `POST` | `/api/tasks/{id}/complete` | Complete a task |
+| `GET/POST` | `/api/notes` | List / create notes |
+| `GET/PATCH/DELETE` | `/api/notes/{id}` | Get / update / delete note |
+| `GET/POST` | `/api/events` | List / create events |
+| `GET/PUT/DELETE` | `/api/events/{id}` | Get / update / delete event |
+| `POST` | `/api/cards` | Create adaptive card |
+| `GET/PUT/DELETE` | `/api/cards/{id}` | Get / update / delete card |
 
 ## Configuration
 
@@ -374,13 +449,21 @@ docker logs -f ringclaw
 
 ## Release
 
+Multi-stage CI pipeline:
+
+| Trigger | Channel | Tag format |
+|---------|---------|------------|
+| Push to feature branch | Alpha | `alpha-<branch>` |
+| Push to main | Beta | `beta-latest` |
+| Push version tag | Stable | `v0.1.0` |
+
 ```bash
-# Tag a new version to trigger GitHub Actions build & release
+# Stable release
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The workflow builds binaries for `darwin/linux/windows` x `amd64/arm64`, creates a GitHub Release, and uploads all artifacts with checksums.
+All channels build binaries for `darwin/linux/windows` x `amd64/arm64` with checksums.
 
 ## Development
 
