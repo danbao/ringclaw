@@ -276,9 +276,12 @@ func TestMonitor_ChooseClient_ExtraChats(t *testing.T) {
 }
 
 func TestMonitor_HandleWSMessage_IgnoreBotClientPost(t *testing.T) {
+	var mu sync.Mutex
 	var called bool
 	m := newTestMonitor("", func(ctx context.Context, client *Client, post Post) {
+		mu.Lock()
 		called = true
+		mu.Unlock()
 	})
 	bot := NewBotClient("", "fake-bot-token")
 	bot.SetOwnerID("bot-ext-123")
@@ -296,15 +299,20 @@ func TestMonitor_HandleWSMessage_IgnoreBotClientPost(t *testing.T) {
 	m.handleWSMessage(context.Background(), msg)
 	time.Sleep(50 * time.Millisecond)
 
+	mu.Lock()
+	defer mu.Unlock()
 	if called {
 		t.Error("handler should not be called for bot client's own messages")
 	}
 }
 
 func TestMonitor_HandleWSMessage_BotRouting(t *testing.T) {
+	var mu sync.Mutex
 	var receivedClient *Client
 	m := newTestMonitor("", func(ctx context.Context, client *Client, post Post) {
+		mu.Lock()
 		receivedClient = client
+		mu.Unlock()
 	})
 	bot := NewBotClient("", "fake-bot-token")
 	bot.SetOwnerID("bot-ext-123")
@@ -321,12 +329,14 @@ func TestMonitor_HandleWSMessage_BotRouting(t *testing.T) {
 	})
 	m.handleWSMessage(context.Background(), msg)
 	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
 	if receivedClient != bot {
 		t.Error("DM chat should route to bot client")
 	}
+	receivedClient = nil
+	mu.Unlock()
 
 	// Message in group-1 -> should route to bot client
-	receivedClient = nil
 	msg = makeWSMessage(Post{
 		ID:        "p101",
 		GroupID:   "group-1",
@@ -337,12 +347,14 @@ func TestMonitor_HandleWSMessage_BotRouting(t *testing.T) {
 	})
 	m.handleWSMessage(context.Background(), msg)
 	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
 	if receivedClient != bot {
 		t.Error("group-1 should route to bot client")
 	}
+	receivedClient = nil
+	mu.Unlock()
 
 	// Message in random-chat -> should route to private client
-	receivedClient = nil
 	msg = makeWSMessage(Post{
 		ID:        "p102",
 		GroupID:   "random-chat",
@@ -353,8 +365,78 @@ func TestMonitor_HandleWSMessage_BotRouting(t *testing.T) {
 	})
 	m.handleWSMessage(context.Background(), msg)
 	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
 	if receivedClient != m.client {
 		t.Error("random-chat should route to private client")
+	}
+	mu.Unlock()
+}
+
+func TestMonitor_HandleWSMessage_PrivateOwnerFiltered(t *testing.T) {
+	var mu sync.Mutex
+	var called bool
+	m := newTestMonitor("", func(ctx context.Context, client *Client, post Post) {
+		mu.Lock()
+		called = true
+		mu.Unlock()
+	})
+	m.client.SetOwnerID("private-ext-456")
+
+	msg := makeWSMessage(Post{
+		ID:        "p200",
+		GroupID:   "any-chat",
+		Type:      "TextMessage",
+		Text:      "--------answer--------\nhello\n---------end----------",
+		CreatorID: "private-ext-456",
+		EventType: "PostAdded",
+	})
+	m.handleWSMessage(context.Background(), msg)
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if called {
+		t.Error("handler should not be called for private app's own bot messages")
+	}
+}
+
+func TestMonitor_SetBotClient_EmptyExtraChats(t *testing.T) {
+	m := newTestMonitor("", func(ctx context.Context, client *Client, post Post) {})
+	bot := NewBotClient("", "fake-token")
+	m.SetBotClient(bot, "dm-chat", nil)
+
+	if m.botChatIDs == nil {
+		t.Error("botChatIDs should be initialized even with nil input")
+	}
+	if len(m.botChatIDs) != 0 {
+		t.Errorf("expected empty botChatIDs, got %d", len(m.botChatIDs))
+	}
+	if m.chooseClient("dm-chat") != bot {
+		t.Error("DM should still route to bot")
+	}
+	if m.chooseClient("other") != m.client {
+		t.Error("other should route to private")
+	}
+}
+
+func TestNewBotClient(t *testing.T) {
+	bot := NewBotClient("https://example.com", "test-bot-token")
+	token, err := bot.Auth().AccessToken()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if token != "test-bot-token" {
+		t.Errorf("expected test-bot-token, got %q", token)
+	}
+	if bot.ServerURL() != "https://example.com" {
+		t.Errorf("expected https://example.com, got %q", bot.ServerURL())
+	}
+}
+
+func TestNewBotClient_DefaultServerURL(t *testing.T) {
+	bot := NewBotClient("", "test-bot-token")
+	if bot.ServerURL() != defaultServerURL {
+		t.Errorf("expected %q, got %q", defaultServerURL, bot.ServerURL())
 	}
 }
 
