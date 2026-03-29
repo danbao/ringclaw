@@ -265,12 +265,8 @@ func logFile() string {
 }
 
 func runDaemon() error {
-	if pid, err := readPid(); err == nil {
-		if processExists(pid) {
-			fmt.Printf("ringclaw is already running (pid=%d)\n", pid)
-			return nil
-		}
-	}
+	// Kill any existing ringclaw processes before starting a new one
+	stopAllRingclaw()
 
 	if err := os.MkdirAll(ringclawDir(), 0o700); err != nil {
 		return fmt.Errorf("create ringclaw dir: %w", err)
@@ -416,4 +412,23 @@ func verifyAgents(cfg *config.Config) {
 			}
 		}
 	}
+}
+
+// stopAllRingclaw kills all running ringclaw processes (by PID file and by process scan).
+func stopAllRingclaw() {
+	// 1. Kill by PID file
+	if pid, err := readPid(); err == nil && processExists(pid) {
+		if p, err := os.FindProcess(pid); err == nil {
+			_ = signalTerminate(p)
+		}
+	}
+	os.Remove(pidFile())
+
+	// 2. Kill any remaining ringclaw processes by scanning
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	_ = exec.Command("pkill", "-f", exe+" start").Run()
+	time.Sleep(500 * time.Millisecond)
 }

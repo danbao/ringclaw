@@ -41,6 +41,7 @@ type Handler struct {
 	saveDefault   SaveDefaultFunc
 	version       string
 	startTime     time.Time
+	seenMsgs      sync.Map // map[string]time.Time — dedup by post ID
 }
 
 // NewHandler creates a new message handler.
@@ -52,6 +53,17 @@ func NewHandler(factory AgentFactory, saveDefault SaveDefaultFunc, version strin
 		version:     version,
 		startTime:   time.Now(),
 	}
+}
+
+// cleanSeenMsgs removes entries older than 5 minutes from the dedup cache.
+func (h *Handler) cleanSeenMsgs() {
+	cutoff := time.Now().Add(-5 * time.Minute)
+	h.seenMsgs.Range(func(key, value any) bool {
+		if t, ok := value.(time.Time); ok && t.Before(cutoff) {
+			h.seenMsgs.Delete(key)
+		}
+		return true
+	})
 }
 
 // SetCustomAliases sets custom alias mappings from config.
@@ -228,6 +240,15 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 	if text == "" {
 		slog.Debug("received empty message, skipping", "component", "handler", "creatorID", post.CreatorID)
 		return
+	}
+
+	// Deduplicate by post ID to avoid processing the same message multiple times
+	if post.ID != "" {
+		if _, loaded := h.seenMsgs.LoadOrStore(post.ID, time.Now()); loaded {
+			slog.Debug("duplicate message skipped", "component", "handler", "postID", post.ID)
+			return
+		}
+		go h.cleanSeenMsgs()
 	}
 
 	chatID := post.GroupID
