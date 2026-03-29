@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -122,8 +123,24 @@ func (a *Auth) refreshToken() error {
 	return nil
 }
 
+// InvalidateToken clears the cached access token, forcing the next
+// AccessToken() call to re-authenticate via JWT.
+func (a *Auth) InvalidateToken() {
+	a.mu.Lock()
+	a.accessToken = ""
+	a.expiresAt = time.Time{}
+	a.mu.Unlock()
+}
+
 // GetWSToken obtains a single-use WebSocket access token.
+// If the wstoken request returns HTTP 401 (stale/revoked token),
+// the access token is invalidated and a single retry is attempted
+// with a freshly obtained token.
 func (a *Auth) GetWSToken() (*WSTokenResponse, error) {
+	return a.getWSTokenOnce(false)
+}
+
+func (a *Auth) getWSTokenOnce(isRetry bool) (*WSTokenResponse, error) {
 	token, err := a.AccessToken()
 	if err != nil {
 		return nil, err
@@ -144,6 +161,13 @@ func (a *Auth) GetWSToken() (*WSTokenResponse, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read wstoken response: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized && !isRetry {
+		slog.Warn("access token rejected by wstoken endpoint, forcing re-auth via JWT",
+			"component", "auth")
+		a.InvalidateToken()
+		return a.getWSTokenOnce(true)
 	}
 
 	if resp.StatusCode != http.StatusOK {
