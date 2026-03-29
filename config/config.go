@@ -36,6 +36,7 @@ type AgentConfig struct {
 	SystemPrompt string            `json:"system_prompt,omitempty"` // system prompt
 	Endpoint     string            `json:"endpoint,omitempty"`      // API endpoint (http type)
 	APIKey       string            `json:"api_key,omitempty"`       // API key (http type)
+	Headers      map[string]string `json:"headers,omitempty"`       // extra HTTP headers (http type)
 	MaxHistory   int               `json:"max_history,omitempty"`   // max history (http type)
 }
 

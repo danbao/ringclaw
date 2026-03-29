@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -236,6 +237,11 @@ func (a *ACPAgent) Start(ctx context.Context) error {
 		// Use stderr detail if available (e.g. "connect ECONNREFUSED")
 		if detail := a.stderr.LastError(); detail != "" {
 			return fmt.Errorf("agent startup failed: %s", detail)
+		}
+		// Provide a helpful hint when the binary looks like a Claude CLI that doesn't support ACP
+		base := strings.ToLower(filepath.Base(a.command))
+		if base == "claude" || base == "claude.exe" {
+			return fmt.Errorf("agent startup failed (pid=%d): %w\n\nHint: the 'claude' CLI does not support ACP protocol directly.\nSet type to \"cli\" in your config, or install claude-agent-acp and set command to \"claude-agent-acp\".", pid, err)
 		}
 		return fmt.Errorf("agent startup failed (pid=%d): %w", pid, err)
 	}

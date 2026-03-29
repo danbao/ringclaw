@@ -21,6 +21,7 @@ type ChatMessage struct {
 type HTTPAgent struct {
 	endpoint     string
 	apiKey       string
+	headers      map[string]string
 	model        string
 	systemPrompt string
 	httpClient   *http.Client
@@ -33,6 +34,7 @@ type HTTPAgent struct {
 type HTTPAgentConfig struct {
 	Endpoint     string
 	APIKey       string
+	Headers      map[string]string
 	Model        string
 	SystemPrompt string
 	MaxHistory   int
@@ -49,9 +51,10 @@ func NewHTTPAgent(cfg HTTPAgentConfig) *HTTPAgent {
 	return &HTTPAgent{
 		endpoint:     cfg.Endpoint,
 		apiKey:       cfg.APIKey,
+		headers:      cfg.Headers,
 		model:        cfg.Model,
 		systemPrompt: cfg.SystemPrompt,
-		httpClient:   &http.Client{Timeout: 60 * time.Second},
+		httpClient:   &http.Client{Timeout: 120 * time.Second},
 		history:      make(map[string][]ChatMessage),
 		maxHistory:   cfg.MaxHistory,
 	}
@@ -102,6 +105,9 @@ func (a *HTTPAgent) Chat(ctx context.Context, conversationID string, message str
 	req.Header.Set("Content-Type", "application/json")
 	if a.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+a.apiKey)
+	}
+	for k, v := range a.headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := a.httpClient.Do(req)

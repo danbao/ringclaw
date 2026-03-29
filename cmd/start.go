@@ -215,6 +215,7 @@ func createAgentByName(ctx context.Context, cfg *config.Config, name string) age
 		ag := agent.NewHTTPAgent(agent.HTTPAgentConfig{
 			Endpoint:     agCfg.Endpoint,
 			APIKey:       agCfg.APIKey,
+			Headers:      agCfg.Headers,
 			Model:        agCfg.Model,
 			SystemPrompt: agCfg.SystemPrompt,
 			MaxHistory:   agCfg.MaxHistory,
