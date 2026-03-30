@@ -235,7 +235,7 @@ func (h *Handler) parseCommand(text string) ([]string, string) {
 }
 
 // HandleMessage processes a single incoming RingCentral post.
-func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client, post ringcentral.Post) {
+func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client, readClient *ringcentral.Client, post ringcentral.Post) {
 	text := strings.TrimSpace(post.Text)
 	if text == "" {
 		slog.Debug("received empty message, skipping", "component", "handler", "creatorID", post.CreatorID)
@@ -285,9 +285,9 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 		return
 	}
 
-	// Summarize command
+	// Summarize command -- use readClient (private app) for reading other chats
 	if IsSummarizeCommand(text) {
-		h.handleSummarize(ctx, client, post)
+		h.handleSummarize(ctx, client, readClient, post)
 		return
 	}
 
@@ -828,28 +828,28 @@ func wrapAnswer(text string) string {
 	return "--------answer--------\n" + text + "\n---------end----------"
 }
 
-func (h *Handler) handleSummarize(ctx context.Context, client *ringcentral.Client, post ringcentral.Post) {
+func (h *Handler) handleSummarize(ctx context.Context, replyClient *ringcentral.Client, readClient *ringcentral.Client, post ringcentral.Post) {
 	chatID := post.GroupID
 	text := strings.TrimSpace(post.Text)
 
-	placeholderID, placeholderErr := SendTypingPlaceholder(ctx, client, chatID)
+	placeholderID, placeholderErr := SendTypingPlaceholder(ctx, replyClient, chatID)
 	if placeholderErr != nil {
 		slog.Error("failed to send typing placeholder", "component", "handler", "error", placeholderErr)
 	}
 
 	sendReply := func(reply string) {
 		if placeholderID != "" {
-			if err := UpdatePostText(ctx, client, chatID, placeholderID, reply); err != nil {
+			if err := UpdatePostText(ctx, replyClient, chatID, placeholderID, reply); err != nil {
 				slog.Error("failed to update placeholder", "component", "handler", "error", err)
-				_ = SendTextReply(ctx, client, chatID, reply)
+				_ = SendTextReply(ctx, replyClient, chatID, reply)
 			}
 		} else {
-			_ = SendTextReply(ctx, client, chatID, reply)
+			_ = SendTextReply(ctx, replyClient, chatID, reply)
 		}
 	}
 
-	// Resolve target chat
-	req, err := ResolveChatTarget(ctx, client, text, post.Mentions)
+	// Resolve target chat using readClient (private app has access to all chats)
+	req, err := ResolveChatTarget(ctx, readClient, text, post.Mentions)
 	if err != nil {
 		sendReply(fmt.Sprintf("Error: %v", err))
 		return
@@ -857,8 +857,8 @@ func (h *Handler) handleSummarize(ctx context.Context, client *ringcentral.Clien
 
 	slog.Info("summarize target chat", "component", "summarize", "chatName", req.ChatName, "chatID", req.ChatID, "from", req.TimeFrom.Format(time.RFC3339))
 
-	// Build prompt from chat messages
-	prompt, err := BuildSummaryPrompt(ctx, client, req)
+	// Build prompt using readClient (private app can read any chat's messages)
+	prompt, err := BuildSummaryPrompt(ctx, readClient, req)
 	if err != nil {
 		sendReply(fmt.Sprintf("Error: %v", err))
 		return
@@ -883,9 +883,9 @@ func (h *Handler) handleSummarize(ctx context.Context, client *ringcentral.Clien
 
 	if len(actions) > 0 {
 		targetChatID := req.ChatID
-		results := ExecuteAgentActions(ctx, client, targetChatID, actions)
+		results := ExecuteAgentActions(ctx, replyClient, targetChatID, actions)
 		if len(results) > 0 {
-			_ = SendTextReply(ctx, client, chatID, strings.Join(results, "\n"))
+			_ = SendTextReply(ctx, replyClient, chatID, strings.Join(results, "\n"))
 		}
 	}
 }

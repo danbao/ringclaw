@@ -111,7 +111,7 @@ func TestMonitor_HandleWSMessage_PostAdded(t *testing.T) {
 	var mu sync.Mutex
 	var received []Post
 
-	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, _ *Client, post Post) {
 		mu.Lock()
 		received = append(received, post)
 		mu.Unlock()
@@ -143,7 +143,7 @@ func TestMonitor_HandleWSMessage_PostAdded(t *testing.T) {
 
 func TestMonitor_HandleWSMessage_IgnoreBotMessage(t *testing.T) {
 	var called bool
-	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, _ *Client, post Post) {
 		called = true
 	})
 
@@ -167,7 +167,7 @@ func TestMonitor_HandleWSMessage_IgnoreBotMessage(t *testing.T) {
 
 func TestMonitor_HandleWSMessage_FilterByChatID(t *testing.T) {
 	var called bool
-	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, _ *Client, post Post) {
 		called = true
 	})
 
@@ -191,7 +191,7 @@ func TestMonitor_HandleWSMessage_FilterByChatID(t *testing.T) {
 
 func TestMonitor_HandleWSMessage_IgnoreNonText(t *testing.T) {
 	var called bool
-	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, _ *Client, post Post) {
 		called = true
 	})
 
@@ -214,7 +214,7 @@ func TestMonitor_HandleWSMessage_IgnoreNonText(t *testing.T) {
 
 func TestMonitor_HandleWSMessage_IgnoreSentPost(t *testing.T) {
 	var called bool
-	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, post Post) {
+	m := newTestMonitor("chat-1", func(ctx context.Context, client *Client, _ *Client, post Post) {
 		called = true
 	})
 
@@ -239,7 +239,7 @@ func TestMonitor_HandleWSMessage_IgnoreSentPost(t *testing.T) {
 }
 
 func TestMonitor_ChooseClient_NoBotClient(t *testing.T) {
-	m := newTestMonitor("", func(ctx context.Context, client *Client, post Post) {})
+	m := newTestMonitor("", func(ctx context.Context, client *Client, _ *Client, post Post) {})
 	got := m.chooseClient("any-chat")
 	if got != m.client {
 		t.Error("without bot client, should always return private client")
@@ -247,7 +247,7 @@ func TestMonitor_ChooseClient_NoBotClient(t *testing.T) {
 }
 
 func TestMonitor_ChooseClient_BotDM(t *testing.T) {
-	m := newTestMonitor("", func(ctx context.Context, client *Client, post Post) {})
+	m := newTestMonitor("", func(ctx context.Context, client *Client, _ *Client, post Post) {})
 	bot := NewBotClient("", "fake-bot-token")
 	m.SetBotClient(bot, "dm-chat-123", true)
 
@@ -265,7 +265,7 @@ func TestMonitor_ChooseClient_BotDM(t *testing.T) {
 func TestMonitor_ChooseClient_AllowedChats(t *testing.T) {
 	creds := &Credentials{ClientID: "id", ClientSecret: "secret", JWTToken: "jwt"}
 	client := NewClient(creds)
-	handler := func(ctx context.Context, c *Client, p Post) {}
+	handler := func(ctx context.Context, c *Client, _ *Client, p Post) {}
 	m := NewMonitor(client, handler, []string{"group-1", "group-2"})
 
 	bot := NewBotClient("", "fake-bot-token")
@@ -288,7 +288,7 @@ func TestMonitor_ChooseClient_AllowedChats(t *testing.T) {
 func TestMonitor_HandleWSMessage_IgnoreBotClientPost(t *testing.T) {
 	var mu sync.Mutex
 	var called bool
-	m := newTestMonitor("", func(ctx context.Context, client *Client, post Post) {
+	m := newTestMonitor("", func(ctx context.Context, client *Client, _ *Client, post Post) {
 		mu.Lock()
 		called = true
 		mu.Unlock()
@@ -321,7 +321,7 @@ func TestMonitor_HandleWSMessage_BotRouting(t *testing.T) {
 	var receivedClient *Client
 	creds := &Credentials{ClientID: "id", ClientSecret: "secret", JWTToken: "jwt"}
 	client := NewClient(creds)
-	handler := func(ctx context.Context, c *Client, p Post) {
+	handler := func(ctx context.Context, c *Client, _ *Client, p Post) {
 		mu.Lock()
 		receivedClient = c
 		mu.Unlock()
@@ -389,7 +389,7 @@ func TestMonitor_HandleWSMessage_BotRouting(t *testing.T) {
 func TestMonitor_HandleWSMessage_PrivateOwnerFiltered(t *testing.T) {
 	var mu sync.Mutex
 	var called bool
-	m := newTestMonitor("", func(ctx context.Context, client *Client, post Post) {
+	m := newTestMonitor("", func(ctx context.Context, client *Client, _ *Client, post Post) {
 		mu.Lock()
 		called = true
 		mu.Unlock()
@@ -415,7 +415,7 @@ func TestMonitor_HandleWSMessage_PrivateOwnerFiltered(t *testing.T) {
 }
 
 func TestMonitor_SetBotClient_NoChatIDs(t *testing.T) {
-	m := newTestMonitor("", func(ctx context.Context, client *Client, post Post) {})
+	m := newTestMonitor("", func(ctx context.Context, client *Client, _ *Client, post Post) {})
 	bot := NewBotClient("", "fake-token")
 	m.SetBotClient(bot, "dm-chat", true)
 
@@ -440,7 +440,7 @@ func newBotMonitorWithGroups(groups []string, mentionOnly bool, handler MessageH
 func TestMonitor_GroupChat_RequiresMention(t *testing.T) {
 	var mu sync.Mutex
 	var called bool
-	m, _ := newBotMonitorWithGroups([]string{"group-1"}, true, func(ctx context.Context, client *Client, post Post) {
+	m, _ := newBotMonitorWithGroups([]string{"group-1"}, true, func(ctx context.Context, client *Client, _ *Client, post Post) {
 		mu.Lock()
 		called = true
 		mu.Unlock()
@@ -468,7 +468,7 @@ func TestMonitor_GroupChat_RequiresMention(t *testing.T) {
 func TestMonitor_GroupChat_WithMention(t *testing.T) {
 	var mu sync.Mutex
 	var receivedClient *Client
-	m, bot := newBotMonitorWithGroups([]string{"group-1"}, true, func(ctx context.Context, client *Client, post Post) {
+	m, bot := newBotMonitorWithGroups([]string{"group-1"}, true, func(ctx context.Context, client *Client, _ *Client, post Post) {
 		mu.Lock()
 		receivedClient = client
 		mu.Unlock()
@@ -497,7 +497,7 @@ func TestMonitor_GroupChat_WithMention(t *testing.T) {
 func TestMonitor_GroupChat_WrongMention(t *testing.T) {
 	var mu sync.Mutex
 	var called bool
-	m, _ := newBotMonitorWithGroups([]string{"group-1"}, true, func(ctx context.Context, client *Client, post Post) {
+	m, _ := newBotMonitorWithGroups([]string{"group-1"}, true, func(ctx context.Context, client *Client, _ *Client, post Post) {
 		mu.Lock()
 		called = true
 		mu.Unlock()
@@ -526,7 +526,7 @@ func TestMonitor_GroupChat_WrongMention(t *testing.T) {
 func TestMonitor_DM_NoMentionRequired(t *testing.T) {
 	var mu sync.Mutex
 	var receivedClient *Client
-	m, bot := newBotMonitorWithGroups([]string{"group-1"}, true, func(ctx context.Context, client *Client, post Post) {
+	m, bot := newBotMonitorWithGroups([]string{"group-1"}, true, func(ctx context.Context, client *Client, _ *Client, post Post) {
 		mu.Lock()
 		receivedClient = client
 		mu.Unlock()
@@ -552,7 +552,7 @@ func TestMonitor_DM_NoMentionRequired(t *testing.T) {
 }
 
 func TestMonitor_IsBotMentioned(t *testing.T) {
-	m, _ := newBotMonitorWithGroups(nil, true, func(ctx context.Context, client *Client, post Post) {})
+	m, _ := newBotMonitorWithGroups(nil, true, func(ctx context.Context, client *Client, _ *Client, post Post) {})
 
 	tests := []struct {
 		name     string
@@ -578,7 +578,7 @@ func TestMonitor_IsBotMentioned(t *testing.T) {
 func TestMonitor_GroupChat_MentionOnlyDisabled(t *testing.T) {
 	var mu sync.Mutex
 	var receivedClient *Client
-	m, bot := newBotMonitorWithGroups([]string{"group-1"}, false, func(ctx context.Context, client *Client, post Post) {
+	m, bot := newBotMonitorWithGroups([]string{"group-1"}, false, func(ctx context.Context, client *Client, _ *Client, post Post) {
 		mu.Lock()
 		receivedClient = client
 		mu.Unlock()

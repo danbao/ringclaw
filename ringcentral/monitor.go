@@ -23,7 +23,9 @@ const (
 )
 
 // MessageHandler is called for each received post.
-type MessageHandler func(ctx context.Context, client *Client, post Post)
+// replyClient is for sending replies (bot or private app depending on routing).
+// readClient is always the private app for reading any chat's messages.
+type MessageHandler func(ctx context.Context, replyClient *Client, readClient *Client, post Post)
 
 // Monitor manages the WebSocket connection for receiving messages.
 // Monitor manages the WebSocket connection for receiving messages.
@@ -356,7 +358,7 @@ func (m *Monitor) handleWSMessage(ctx context.Context, msg []byte) {
 
 	slog.Info("received post", "component", "monitor", "creatorID", event.Body.CreatorID, "chatID", event.Body.GroupID, "text", truncate(event.Body.Text, 50))
 
-	go m.handler(ctx, replyClient, event.Body)
+	go m.handler(ctx, replyClient, m.client, event.Body)
 }
 
 func (m *Monitor) calcBackoff() time.Duration {
