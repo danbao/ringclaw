@@ -698,7 +698,6 @@ func ExecuteAgentActions(ctx context.Context, client *ringcentral.Client, chatID
 			if pubErr := client.PublishNote(ctx, note.ID); pubErr != nil {
 				slog.Error("action: publish note failed", "noteID", note.ID, "error", pubErr)
 			}
-			results = append(results, fmt.Sprintf("Note created: `%s` — %s", note.ID, title))
 			slog.Info("action: created note", "noteID", note.ID, "chatID", targetChat, "title", title)
 
 		case "TASK":
@@ -712,7 +711,6 @@ func ExecuteAgentActions(ctx context.Context, client *ringcentral.Client, chatID
 				results = append(results, fmt.Sprintf("Failed to create task: %v", err))
 				continue
 			}
-			results = append(results, fmt.Sprintf("Task created: `%s` — %s", task.ID, subject))
 			slog.Info("action: created task", "taskID", task.ID, "chatID", targetChat, "subject", subject)
 
 		case "EVENT":
@@ -732,7 +730,6 @@ func ExecuteAgentActions(ctx context.Context, client *ringcentral.Client, chatID
 				results = append(results, fmt.Sprintf("Failed to create event: %v", err))
 				continue
 			}
-			results = append(results, fmt.Sprintf("Event created: `%s` — %s", event.ID, title))
 			slog.Info("action: created event", "eventID", event.ID, "title", title)
 
 		case "CARD":
