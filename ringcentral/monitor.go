@@ -26,17 +26,18 @@ const (
 type MessageHandler func(ctx context.Context, client *Client, post Post)
 
 // Monitor manages the WebSocket connection for receiving messages.
+// Monitor manages the WebSocket connection for receiving messages.
 type Monitor struct {
-	client      *Client
+	client         *Client
 	botClient      *Client
 	botDMChatID    string
-	botChatIDs     map[string]bool
 	botMentionOnly bool
-	handler     MessageHandler
-	failures    int
-	sentPosts   map[string]time.Time // post ID -> timestamp
-	lastEvict   time.Time
-	mu          sync.Mutex
+	allowedChatIDs map[string]bool // combined chat filter + bot routing
+	handler        MessageHandler
+	failures       int
+	sentPosts      map[string]time.Time // post ID -> timestamp
+	lastEvict      time.Time
+	mu             sync.Mutex
 }
 
 const (
@@ -81,25 +82,31 @@ func (m *Monitor) IsSentPost(id string) bool {
 }
 
 // NewMonitor creates a new WebSocket monitor.
-func NewMonitor(client *Client, handler MessageHandler) *Monitor {
+// chatIDs limits which chats are monitored; empty means all chats.
+func NewMonitor(client *Client, handler MessageHandler, chatIDs []string) *Monitor {
+	allowed := make(map[string]bool, len(chatIDs))
+	for _, id := range chatIDs {
+		allowed[id] = true
+	}
 	return &Monitor{
-		client:    client,
-		handler:   handler,
-		sentPosts: make(map[string]time.Time),
+		client:         client,
+		handler:        handler,
+		allowedChatIDs: allowed,
+		sentPosts:      make(map[string]time.Time),
 	}
 }
 
 // SetBotClient configures a bot client for routing replies.
 // dmChatID is the default DM chat between the bot and the installer.
-// extraChatIDs are additional chat IDs where the bot should reply.
 // mentionOnly controls whether group chats require @mention (default true).
-func (m *Monitor) SetBotClient(bot *Client, dmChatID string, extraChatIDs []string, mentionOnly bool) {
+// The bot's DM chat is automatically added to the allowed chat list.
+func (m *Monitor) SetBotClient(bot *Client, dmChatID string, mentionOnly bool) {
 	m.botClient = bot
 	m.botDMChatID = dmChatID
 	m.botMentionOnly = mentionOnly
-	m.botChatIDs = make(map[string]bool, len(extraChatIDs))
-	for _, id := range extraChatIDs {
-		m.botChatIDs[id] = true
+	// Ensure bot DM is always in the allowed list
+	if dmChatID != "" {
+		m.allowedChatIDs[dmChatID] = true
 	}
 }
 
@@ -112,7 +119,7 @@ func (m *Monitor) chooseClient(chatID string) *Client {
 	if chatID == m.botDMChatID {
 		return m.botClient
 	}
-	if m.botChatIDs[chatID] {
+	if m.allowedChatIDs[chatID] {
 		return m.botClient
 	}
 	return m.client
@@ -325,10 +332,9 @@ func (m *Monitor) handleWSMessage(ctx context.Context, msg []byte) {
 		return
 	}
 
-	// Filter by chat ID if configured
-	chatID := m.client.ChatID()
-	if chatID != "" && event.Body.GroupID != chatID {
-		slog.Debug("ignoring message from wrong chat", "component", "monitor", "chatID", event.Body.GroupID, "expectedChatID", chatID)
+	// Filter by allowed chat IDs if configured
+	if len(m.allowedChatIDs) > 0 && !m.allowedChatIDs[event.Body.GroupID] {
+		slog.Debug("ignoring message from non-allowed chat", "component", "monitor", "chatID", event.Body.GroupID)
 		return
 	}
 

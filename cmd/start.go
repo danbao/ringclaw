@@ -54,8 +54,8 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if cfg.RC.ClientID == "" || cfg.RC.ClientSecret == "" || cfg.RC.JWTToken == "" {
 		return fmt.Errorf("RingCentral credentials not configured. Set RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN environment variables or add to config file")
 	}
-	if cfg.RC.ChatID == "" {
-		return fmt.Errorf("RingCentral chat ID not configured. Set RC_CHAT_ID environment variable or add to config file")
+	if cfg.RC.ChatID == "" && len(cfg.RC.ChatIDs) == 0 {
+		return fmt.Errorf("RingCentral chat ID not configured. Set RC_CHAT_ID environment variable, or add chat_ids to config file")
 	}
 
 	if config.DetectAndConfigure(cfg) {
@@ -184,12 +184,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start WebSocket monitor
-	slog.Info("starting message bridge", "chatID", cfg.RC.ChatID)
+	chatIDs := cfg.RC.EffectiveChatIDs()
+	slog.Info("starting message bridge", "chatIDs", chatIDs)
 
 	// Monitor.Run handles reconnection with backoff internally
-	monitor := ringcentral.NewMonitor(client, handler.HandleMessage)
+	monitor := ringcentral.NewMonitor(client, handler.HandleMessage, chatIDs)
 	if botClient != nil {
-		monitor.SetBotClient(botClient, botDMChatID, cfg.RC.BotChats, cfg.RC.IsBotMentionOnly())
+		monitor.SetBotClient(botClient, botDMChatID, cfg.RC.IsBotMentionOnly())
 		botClient.SetMonitor(monitor)
 	}
 	client.SetMonitor(monitor)
