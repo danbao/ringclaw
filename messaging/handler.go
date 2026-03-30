@@ -306,9 +306,9 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 		return
 	}
 
-	// Action commands: /task, /note, /event
+	// Action commands: /task, /note, /event (use readClient for API access)
 	if IsActionCommand(text) {
-		reply := HandleActionCommand(ctx, client, chatID, text)
+		reply := HandleActionCommand(ctx, readClient, chatID, text)
 		if err := SendTextReply(ctx, client, chatID, reply); err != nil {
 			slog.Error("failed to send action reply", "component", "handler", "error", err)
 		}
