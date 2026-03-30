@@ -540,6 +540,7 @@ END_ACTION
 
 ACTION:EVENT title=<title> start=<ISO8601> end=<ISO8601>
 END_ACTION
+Example: ACTION:EVENT title=Team Meeting start=2026-03-30T14:00:00Z end=2026-03-30T15:00:00Z
 
 ACTION:CARD [chatid=<target chat ID>]
 <Adaptive Card JSON, version 1.3>
