@@ -20,26 +20,10 @@ type RCConfig struct {
 	ClientID       string   `json:"client_id,omitempty"`
 	ClientSecret   string   `json:"client_secret,omitempty"`
 	JWTToken       string   `json:"jwt_token,omitempty"`
-	ChatID         string   `json:"chat_id,omitempty"`          // deprecated: use chat_ids
 	ChatIDs        []string `json:"chat_ids,omitempty"`
 	ServerURL      string   `json:"server_url,omitempty"`
 	BotToken       string   `json:"bot_token,omitempty"`
 	BotMentionOnly *bool    `json:"bot_mention_only,omitempty"`
-}
-
-// EffectiveChatIDs returns the merged list of allowed chat IDs.
-// Supports the legacy chat_id field for backward compatibility.
-func (rc RCConfig) EffectiveChatIDs() []string {
-	ids := make([]string, 0, len(rc.ChatIDs)+1)
-	if rc.ChatID != "" {
-		ids = append(ids, rc.ChatID)
-	}
-	for _, id := range rc.ChatIDs {
-		if id != rc.ChatID {
-			ids = append(ids, id)
-		}
-	}
-	return ids
 }
 
 // IsBotMentionOnly returns whether the bot requires @mention in group chats.
@@ -138,9 +122,6 @@ func loadEnv(cfg *Config) {
 	}
 	if v := os.Getenv("RC_JWT_TOKEN"); v != "" {
 		cfg.RC.JWTToken = v
-	}
-	if v := os.Getenv("RC_CHAT_ID"); v != "" {
-		cfg.RC.ChatID = v
 	}
 	if v := os.Getenv("RC_SERVER_URL"); v != "" {
 		cfg.RC.ServerURL = v

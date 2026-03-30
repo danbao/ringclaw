@@ -22,7 +22,6 @@ const (
 // Client is a RingCentral Team Messaging REST API client.
 type Client struct {
 	serverURL  string
-	chatID     string
 	auth       *Auth
 	httpClient *http.Client
 	ownerID    string
@@ -50,7 +49,6 @@ func NewClient(creds *Credentials) *Client {
 	auth := NewAuth(creds.ClientID, creds.ClientSecret, creds.JWTToken, serverURL)
 	return &Client{
 		serverURL: serverURL,
-		chatID:    creds.ChatID,
 		auth:      auth,
 		httpClient: &http.Client{
 			Timeout: requestTimeout,
@@ -90,11 +88,6 @@ func NewBotClient(serverURL, botToken string) *Client {
 // Authenticate performs JWT authentication. Must be called before other methods.
 func (c *Client) Authenticate() error {
 	return c.auth.Authenticate()
-}
-
-// ChatID returns the configured chat ID.
-func (c *Client) ChatID() string {
-	return c.chatID
 }
 
 // Auth returns the auth manager (used by monitor for WS token).
