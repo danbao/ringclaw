@@ -923,8 +923,8 @@ func (h *Handler) handleSummarize(ctx context.Context, replyClient *ringcentral.
 	}
 
 	if len(actions) > 0 {
-		targetChatID := req.ChatID
-		results := ExecuteAgentActions(ctx, replyClient, targetChatID, actions)
+		// Execute actions in the current chat (not the summarized chat) using readClient
+		results := ExecuteAgentActions(ctx, readClient, chatID, actions)
 		if len(results) > 0 {
 			_ = SendTextReply(ctx, replyClient, chatID, strings.Join(results, "\n"))
 		}
