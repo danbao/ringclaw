@@ -68,6 +68,8 @@ func TestLoadEnvOverride(t *testing.T) {
 	t.Setenv("RC_CLIENT_ID", "from-env")
 	t.Setenv("RC_CLIENT_SECRET", "env-secret")
 	t.Setenv("RC_JWT_TOKEN", "env-jwt")
+	t.Setenv("RC_CHAT_IDS", "chat-1, chat-2 ,,chat-3")
+	t.Setenv("RC_BOT_MENTION_ONLY", "false")
 
 	loadEnv(cfg)
 
@@ -76,6 +78,15 @@ func TestLoadEnvOverride(t *testing.T) {
 	}
 	if cfg.RC.ClientSecret != "env-secret" {
 		t.Errorf("expected env-secret, got %q", cfg.RC.ClientSecret)
+	}
+	if len(cfg.RC.ChatIDs) != 3 {
+		t.Fatalf("expected 3 chat IDs, got %d", len(cfg.RC.ChatIDs))
+	}
+	if cfg.RC.ChatIDs[0] != "chat-1" || cfg.RC.ChatIDs[1] != "chat-2" || cfg.RC.ChatIDs[2] != "chat-3" {
+		t.Fatalf("unexpected chat IDs: %#v", cfg.RC.ChatIDs)
+	}
+	if cfg.RC.BotMentionOnly == nil || *cfg.RC.BotMentionOnly {
+		t.Fatalf("expected bot_mention_only=false, got %#v", cfg.RC.BotMentionOnly)
 	}
 }
 

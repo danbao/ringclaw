@@ -255,6 +255,21 @@ func createAgentByName(ctx context.Context, cfg *config.Config, name string) age
 		})
 		slog.Info("created HTTP agent", "component", "agent", "name", name, "endpoint", agCfg.Endpoint, "model", agCfg.Model)
 		return ag
+	case "nanoclaw":
+		ag := agent.NewNanoClawAgent(agent.NanoClawAgentConfig{
+			Name:         name,
+			Endpoint:     agCfg.Endpoint,
+			APIKey:       agCfg.APIKey,
+			Headers:      agCfg.Headers,
+			Model:        agCfg.Model,
+			SystemPrompt: agCfg.SystemPrompt,
+			Cwd:          agCfg.Cwd,
+			GroupJID:     agCfg.NanoclawGroupJID,
+			Sender:       agCfg.NanoclawSender,
+			ContextMode:  agCfg.NanoclawContextMode,
+		})
+		slog.Info("created NanoClaw agent", "component", "agent", "name", name, "endpoint", agCfg.Endpoint, "group_jid", agCfg.NanoclawGroupJID)
+		return ag
 	default:
 		slog.Warn("unknown agent type", "component", "agent", "type", agCfg.Type, "name", name)
 		return nil
