@@ -417,6 +417,10 @@ func verifyAgents(cfg *config.Config) {
 				r.ok = true
 				r.cmd = agCfg.Endpoint
 				r.detail = "http endpoint"
+			case "nanoclaw":
+				r.ok = true
+				r.cmd = agCfg.Endpoint
+				r.detail = "nanoclaw bridge"
 			default:
 				r.ok = false
 				r.detail = "unknown type"
