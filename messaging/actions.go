@@ -555,8 +555,8 @@ Rules:
 - Your text reply comes FIRST, then ACTION blocks at the end.
 - When the user asks for cards, rich display, progress, reports, or structured data → use ACTION:CARD.
 - When the user asks to create notes/tasks/events → use the corresponding ACTION block.
-- When the user mentions ![:Person](ID), use the numeric ID as assignee=<ID> in TASK to assign the task to that person. The task is created in the current chat.
-- When the user mentions ![:Team](ID), use the numeric ID as chatid=<ID> to target that team chat.
+- chatid accepts a numeric Chat ID, a ![:Team](ID) mention, OR a person's name (e.g., chatid=Ian Zhang). The system will automatically resolve names to chat IDs via directory search.
+- assignee accepts a numeric Person ID, a ![:Person](ID) mention, OR a person's name (e.g., assignee=Ian Zhang). The system resolves names automatically.
 - If no chatid is specified, the action executes in the current chat.
 - Do NOT create files. Do NOT output raw JSON in your reply. Use ACTION blocks so the system executes them.
 - If no action is needed, reply normally without ACTION blocks.
@@ -683,13 +683,112 @@ func parseActionParams(s string) []keyValue {
 	return result
 }
 
+// resolveNameToChatID resolves a person name to a Direct chat ID via directory search.
+func resolveNameToChatID(ctx context.Context, client *ringcentral.Client, name string) (string, error) {
+	result, err := client.SearchDirectory(ctx, name)
+	if err != nil {
+		return "", fmt.Errorf("directory search: %w", err)
+	}
+	if len(result.Records) == 0 {
+		return "", fmt.Errorf("no person found matching '%s'", name)
+	}
+
+	var best *ringcentral.DirectoryEntry
+	for i := range result.Records {
+		e := &result.Records[i]
+		fullName := strings.TrimSpace(e.FirstName + " " + e.LastName)
+		if fuzzyMatch(fullName, name) || fuzzyMatch(e.Email, name) {
+			best = e
+			break
+		}
+	}
+	if best == nil {
+		return "", fmt.Errorf("no person matched '%s' (got %d results)", name, len(result.Records))
+	}
+
+	fullName := strings.TrimSpace(best.FirstName + " " + best.LastName)
+	slog.Info("action: resolved person", "name", name, "match", fullName, "id", best.ID)
+
+	chat, err := client.CreateConversation(ctx, []string{best.ID})
+	if err != nil {
+		return "", fmt.Errorf("create conversation with %s: %w", fullName, err)
+	}
+	return chat.ID, nil
+}
+
+// resolveNameToPersonID resolves a person name to a person ID via directory search.
+func resolveNameToPersonID(ctx context.Context, client *ringcentral.Client, name string) (string, error) {
+	result, err := client.SearchDirectory(ctx, name)
+	if err != nil {
+		return "", fmt.Errorf("directory search: %w", err)
+	}
+	if len(result.Records) == 0 {
+		return "", fmt.Errorf("no person found matching '%s'", name)
+	}
+
+	var best *ringcentral.DirectoryEntry
+	for i := range result.Records {
+		e := &result.Records[i]
+		fullName := strings.TrimSpace(e.FirstName + " " + e.LastName)
+		if fuzzyMatch(fullName, name) || fuzzyMatch(e.Email, name) {
+			best = e
+			break
+		}
+	}
+	if best == nil {
+		return "", fmt.Errorf("no person matched '%s'", name)
+	}
+
+	fullName := strings.TrimSpace(best.FirstName + " " + best.LastName)
+	slog.Info("action: resolved assignee", "name", name, "match", fullName, "id", best.ID)
+	return best.ID, nil
+}
+
+func isNumericID(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveChatParam resolves a chatid param: numeric IDs pass through,
+// names are resolved via directory search + conversation creation.
+func resolveChatParam(ctx context.Context, client *ringcentral.Client, raw string) (string, error) {
+	id := extractChatID(raw)
+	if isNumericID(id) {
+		return id, nil
+	}
+	return resolveNameToChatID(ctx, client, id)
+}
+
+// resolveAssigneeParam resolves an assignee param: numeric IDs pass through,
+// names are resolved via directory search.
+func resolveAssigneeParam(ctx context.Context, client *ringcentral.Client, raw string) (string, error) {
+	id := extractChatID(raw)
+	if isNumericID(id) {
+		return id, nil
+	}
+	return resolveNameToPersonID(ctx, client, id)
+}
+
 // ExecuteAgentActions executes parsed actions against the RC API.
 func ExecuteAgentActions(ctx context.Context, client *ringcentral.Client, chatID string, actions []AgentAction) []string {
 	var results []string
 	for _, a := range actions {
 		targetChat := chatID
 		if cid := a.Params["chatid"]; cid != "" {
-			targetChat = extractChatID(cid)
+			resolved, err := resolveChatParam(ctx, client, cid)
+			if err != nil {
+				slog.Error("action: failed to resolve chatid", "chatid", cid, "error", err)
+				results = append(results, fmt.Sprintf("Failed to resolve chat '%s': %v", cid, err))
+				continue
+			}
+			targetChat = resolved
 		}
 
 		switch a.Type {
@@ -719,7 +818,13 @@ func ExecuteAgentActions(ctx context.Context, client *ringcentral.Client, chatID
 			}
 			req := &ringcentral.CreateTaskRequest{Subject: subject}
 			if aid := a.Params["assignee"]; aid != "" {
-				req.Assignees = []ringcentral.TaskAssignee{{ID: extractChatID(aid)}}
+				resolvedID, err := resolveAssigneeParam(ctx, client, aid)
+				if err != nil {
+					slog.Error("action: failed to resolve assignee", "assignee", aid, "error", err)
+					results = append(results, fmt.Sprintf("Failed to resolve assignee '%s': %v", aid, err))
+					continue
+				}
+				req.Assignees = []ringcentral.TaskAssignee{{ID: resolvedID}}
 			}
 			task, err := client.CreateTask(ctx, targetChat, req)
 			if err != nil {

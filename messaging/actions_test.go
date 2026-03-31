@@ -408,6 +408,111 @@ func TestExtractChatID(t *testing.T) {
 	}
 }
 
+func TestIsNumericID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"12345", true},
+		{"0", true},
+		{"608081020", true},
+		{"", false},
+		{"abc", false},
+		{"123abc", false},
+		{"12 34", false},
+		{"Ian Zhang", false},
+	}
+	for _, tt := range tests {
+		if got := isNumericID(tt.input); got != tt.want {
+			t.Errorf("isNumericID(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestResolveNameToChatID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "directory/entries/search") {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"records": []map[string]string{
+					{"id": "person-1", "firstName": "Ian", "lastName": "Zhang", "email": "ian@example.com"},
+				},
+			})
+			return
+		}
+		if strings.Contains(r.URL.Path, "conversations") {
+			json.NewEncoder(w).Encode(map[string]string{"id": "dm-chat-99", "type": "Direct"})
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	client, _ := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {})
+	// Override with our custom server
+	creds := &ringcentral.Credentials{ClientID: "id", ClientSecret: "secret", JWTToken: "jwt", ServerURL: srv.URL}
+	client = ringcentral.NewClient(creds)
+	client.Auth().SetTokenForTest("test-token", time.Now().Add(1*time.Hour))
+
+	chatID, err := resolveNameToChatID(context.Background(), client, "Ian Zhang")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if chatID != "dm-chat-99" {
+		t.Errorf("expected dm-chat-99, got %q", chatID)
+	}
+}
+
+func TestResolveNameToPersonID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"records": []map[string]string{
+				{"id": "person-42", "firstName": "Ian", "lastName": "Zhang"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	creds := &ringcentral.Credentials{ClientID: "id", ClientSecret: "secret", JWTToken: "jwt", ServerURL: srv.URL}
+	client := ringcentral.NewClient(creds)
+	client.Auth().SetTokenForTest("test-token", time.Now().Add(1*time.Hour))
+
+	personID, err := resolveNameToPersonID(context.Background(), client, "Ian")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if personID != "person-42" {
+		t.Errorf("expected person-42, got %q", personID)
+	}
+}
+
+func TestResolveChatParam_Numeric(t *testing.T) {
+	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {})
+	defer srv.Close()
+
+	id, err := resolveChatParam(context.Background(), client, "12345")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "12345" {
+		t.Errorf("expected 12345, got %q", id)
+	}
+}
+
+func TestResolveChatParam_Mention(t *testing.T) {
+	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {})
+	defer srv.Close()
+
+	id, err := resolveChatParam(context.Background(), client, "![:Team](137158549510)")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if id != "137158549510" {
+		t.Errorf("expected 137158549510, got %q", id)
+	}
+}
+
 func TestParseAgentActions_CardWithChatID(t *testing.T) {
 	reply := `Card sent.
 
