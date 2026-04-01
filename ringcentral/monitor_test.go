@@ -397,6 +397,99 @@ func TestMonitor_SetPrivateClient(t *testing.T) {
 	}
 }
 
+func TestMonitor_SourceUserIDs_AllowsListedUser(t *testing.T) {
+	var mu sync.Mutex
+	var called bool
+
+	bot := NewBotClient("", "fake-bot-token")
+	bot.SetOwnerID("bot-ext-123")
+	m := NewMonitor(bot, func(ctx context.Context, client *Client, _ *Client, post Post) {
+		mu.Lock()
+		called = true
+		mu.Unlock()
+	}, []string{"chat-1"}, []string{"user-A"}, false)
+
+	// Message from allowed user → should be processed
+	msg := makeWSMessage(Post{
+		ID:        "p300",
+		GroupID:   "chat-1",
+		Type:      "TextMessage",
+		Text:      "hello",
+		CreatorID: "user-A",
+		EventType: "PostAdded",
+	})
+	m.handleWSMessage(context.Background(), msg)
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	if !called {
+		t.Error("handler should be called for allowed user")
+	}
+	mu.Unlock()
+}
+
+func TestMonitor_SourceUserIDs_BlocksUnlistedUser(t *testing.T) {
+	var mu sync.Mutex
+	var called bool
+
+	bot := NewBotClient("", "fake-bot-token")
+	bot.SetOwnerID("bot-ext-123")
+	m := NewMonitor(bot, func(ctx context.Context, client *Client, _ *Client, post Post) {
+		mu.Lock()
+		called = true
+		mu.Unlock()
+	}, []string{"chat-1"}, []string{"user-A"}, false)
+
+	// Message from non-allowed user → should be ignored
+	msg := makeWSMessage(Post{
+		ID:        "p301",
+		GroupID:   "chat-1",
+		Type:      "TextMessage",
+		Text:      "hello",
+		CreatorID: "user-B",
+		EventType: "PostAdded",
+	})
+	m.handleWSMessage(context.Background(), msg)
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if called {
+		t.Error("handler should not be called for non-allowed user")
+	}
+}
+
+func TestMonitor_SourceUserIDs_EmptyAllowsAll(t *testing.T) {
+	var mu sync.Mutex
+	var called bool
+
+	bot := NewBotClient("", "fake-bot-token")
+	bot.SetOwnerID("bot-ext-123")
+	m := NewMonitor(bot, func(ctx context.Context, client *Client, _ *Client, post Post) {
+		mu.Lock()
+		called = true
+		mu.Unlock()
+	}, []string{"chat-1"}, nil, false)
+
+	// Empty allowlist → any user should be processed
+	msg := makeWSMessage(Post{
+		ID:        "p302",
+		GroupID:   "chat-1",
+		Type:      "TextMessage",
+		Text:      "hello",
+		CreatorID: "random-user",
+		EventType: "PostAdded",
+	})
+	m.handleWSMessage(context.Background(), msg)
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !called {
+		t.Error("handler should be called when source_user_ids is empty (allow all)")
+	}
+}
+
 func newBotMonitorWithGroups(groups []string, mentionOnly bool, handler MessageHandler) (*Monitor, *Client) {
 	bot := NewBotClient("", "fake-bot-token")
 	bot.SetOwnerID("bot-ext-123")

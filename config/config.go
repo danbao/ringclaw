@@ -36,9 +36,9 @@ type RCConfig struct {
 	ClientID       string   `json:"client_id,omitempty"`
 	ClientSecret   string   `json:"client_secret,omitempty"`
 	JWTToken       string   `json:"jwt_token,omitempty"`
-	ChatIDs       []string `json:"chat_ids,omitempty"`
-	SourceUserIDs []string `json:"source_user_ids,omitempty"`
-	ServerURL     string   `json:"server_url,omitempty"`
+	ChatIDs        []string `json:"chat_ids,omitempty"`
+	SourceUserIDs  []string `json:"source_user_ids,omitempty"`
+	ServerURL      string   `json:"server_url,omitempty"`
 	BotToken       string   `json:"bot_token,omitempty"`
 	BotMentionOnly *bool    `json:"bot_mention_only,omitempty"`
 }

@@ -228,6 +228,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 			lookupClient = privateClient
 		}
 		resolvedUserIDs = lookupClient.ResolveUserIDs(ctx, cfg.RC.SourceUserIDs)
+		slog.Info("source_user_ids resolved", "count", len(resolvedUserIDs), "ids", resolvedUserIDs)
 	}
 
 	monitor := ringcentral.NewMonitor(botClient, handler.HandleMessage, cfg.RC.ChatIDs, resolvedUserIDs, cfg.RC.IsBotMentionOnly())

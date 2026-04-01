@@ -339,15 +339,15 @@ func (m *Monitor) handleWSMessage(ctx context.Context, msg []byte) {
 		return
 	}
 
-	// Filter by source user IDs (empty = allow all users)
-	if len(m.allowedUserIDs) > 0 && !m.allowedUserIDs[event.Body.CreatorID] {
-		slog.Debug("ignoring message from non-allowed user", "component", "monitor", "userID", event.Body.CreatorID)
-		return
-	}
-
 	// Skip messages from the bot's own extension
 	if m.client.OwnerID() != "" && event.Body.CreatorID == m.client.OwnerID() {
 		slog.Debug("ignoring bot's own post", "component", "monitor", "postID", event.Body.ID)
+		return
+	}
+
+	// Filter by source user IDs (empty = allow all users)
+	if len(m.allowedUserIDs) > 0 && !m.allowedUserIDs[event.Body.CreatorID] {
+		slog.Debug("ignoring message from non-allowed user", "component", "monitor", "userID", event.Body.CreatorID)
 		return
 	}
 
