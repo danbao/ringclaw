@@ -87,7 +87,7 @@ func newTestMonitor(chatIDs string, handler MessageHandler) *Monitor {
 	if chatIDs != "" {
 		ids = []string{chatIDs}
 	}
-	return NewMonitor(bot, handler, ids, false)
+	return NewMonitor(bot, handler, ids, nil, false)
 }
 
 func makeWSMessage(post Post) []byte {
@@ -264,7 +264,7 @@ func TestMonitor_HandleWSMessage_IgnoreBotClientPost(t *testing.T) {
 		mu.Lock()
 		called = true
 		mu.Unlock()
-	}, []string{"dm-chat"}, true)
+	}, []string{"dm-chat"}, nil, true)
 
 	msg := makeWSMessage(Post{
 		ID:        "p99",
@@ -296,7 +296,7 @@ func TestMonitor_HandleWSMessage_BotRouting(t *testing.T) {
 		receivedClient = c
 		mu.Unlock()
 	}
-	m := NewMonitor(bot, handler, []string{"dm-chat", "group-1"}, true)
+	m := NewMonitor(bot, handler, []string{"dm-chat", "group-1"}, nil, true)
 
 	// Message in bot DM -> should route to bot client
 	msg := makeWSMessage(Post{
@@ -362,7 +362,7 @@ func TestMonitor_HandleWSMessage_BotOwnerFiltered(t *testing.T) {
 		mu.Lock()
 		called = true
 		mu.Unlock()
-	}, []string{"any-chat"}, false)
+	}, []string{"any-chat"}, nil, false)
 
 	msg := makeWSMessage(Post{
 		ID:        "p200",
@@ -401,7 +401,7 @@ func newBotMonitorWithGroups(groups []string, mentionOnly bool, handler MessageH
 	bot := NewBotClient("", "fake-bot-token")
 	bot.SetOwnerID("bot-ext-123")
 	bot.SetDMChatID("dm-chat")
-	m := NewMonitor(bot, handler, groups, mentionOnly)
+	m := NewMonitor(bot, handler, groups, nil, mentionOnly)
 	return m, bot
 }
 

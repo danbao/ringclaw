@@ -37,6 +37,7 @@ type RCConfig struct {
 	ClientSecret   string   `json:"client_secret,omitempty"`
 	JWTToken       string   `json:"jwt_token,omitempty"`
 	ChatIDs        []string `json:"chat_ids,omitempty"`
+	UserIDs        []string `json:"user_ids,omitempty"`
 	ServerURL      string   `json:"server_url,omitempty"`
 	BotToken       string   `json:"bot_token,omitempty"`
 	BotMentionOnly *bool    `json:"bot_mention_only,omitempty"`
@@ -162,6 +163,17 @@ func loadEnv(cfg *Config) {
 			}
 		}
 		cfg.RC.ChatIDs = chatIDs
+	}
+	if v := os.Getenv("RC_USER_IDS"); v != "" {
+		parts := strings.Split(v, ",")
+		userIDs := make([]string, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				userIDs = append(userIDs, part)
+			}
+		}
+		cfg.RC.UserIDs = userIDs
 	}
 	if v := os.Getenv("RC_BOT_TOKEN"); v != "" {
 		cfg.RC.BotToken = v

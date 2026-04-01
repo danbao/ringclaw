@@ -220,7 +220,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Start WebSocket monitor (bot client drives WS connection)
 	slog.Info("starting message bridge", "chatIDs", cfg.RC.ChatIDs)
 
-	monitor := ringcentral.NewMonitor(botClient, handler.HandleMessage, cfg.RC.ChatIDs, cfg.RC.IsBotMentionOnly())
+	monitor := ringcentral.NewMonitor(botClient, handler.HandleMessage, cfg.RC.ChatIDs, cfg.RC.UserIDs, cfg.RC.IsBotMentionOnly())
 	if privateClient != nil {
 		monitor.SetPrivateClient(privateClient)
 		privateClient.SetMonitor(monitor)
