@@ -123,7 +123,7 @@ RingClaw connects to RingCentral Team Messaging via WebSocket to receive message
 |------|-------------|----------|
 | ACP  | Long-running subprocess, JSON-RPC over stdio. Fastest — reuses process and sessions. | Claude, Codex, Cursor, Kimi, Gemini, OpenCode, OpenClaw, Pi, Copilot, Droid, iFlow, Kiro, Qwen |
 | CLI  | Spawns a new process per message. Supports session resume via `--resume`. | Claude (`claude -p`), Codex (`codex exec`) |
-| HTTP | OpenAI-compatible chat completions API. | OpenClaw (HTTP fallback) |
+| HTTP | OpenAI-compatible chat completions API. Supports `openai` (default), `nanoclaw`, and `dify` formats. | OpenClaw, Dify Chatflow |
 
 Auto-detection picks ACP over CLI when both are available.
 
@@ -203,6 +203,8 @@ Then `/gpt hello` will route to Claude. RingClaw warns on startup if custom alia
 |---------|-------------|
 | `/new`   | Reset the default agent's session and start fresh |
 | `/clear` | Same as `/new` |
+
+> **Dify note:** For Dify agents, `/new` and `/clear` also call `DELETE /v1/conversations/{id}` on the Dify server to wipe history on both sides. Use HTTPS endpoints to avoid nginx 301 redirect issues.
 
 ### Dynamic Workspace
 
@@ -493,6 +495,13 @@ Config file: `~/.ringclaw/config.json`
       "endpoint": "https://api.example.com/v1/chat/completions",
       "api_key": "sk-xxx",
       "model": "openclaw:main"
+    },
+    "dify": {
+      "type": "http",
+      "format": "dify",
+      "endpoint": "https://api.dify.ai/v1/chat-messages",
+      "api_key": "app-xxx",
+      "aliases": ["df"]
     }
   },
   "heartbeat": {
