@@ -273,7 +273,7 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 	// In bot group chats (not bot DM), restrict privileged commands to the bot owner
 	isBotGroup := client.IsBot() && !client.IsBotDM(chatID)
 	if isBotGroup && isPrivilegedCommand(text) {
-		if post.CreatorID != client.OwnerID() {
+		if post.CreatorID != readClient.OwnerID() {
 			slog.Info("blocked privileged command from non-owner", "component", "handler", "creatorID", post.CreatorID, "command", truncate(text, 30))
 			_ = SendTextReply(ctx, client, chatID, "Only the bot owner can use this command in group chats.")
 			return
@@ -359,7 +359,7 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 	if message == "" {
 		if len(agentNames) == 1 && h.isKnownAgent(agentNames[0]) {
 			// Block agent switch from non-owner in bot group chats
-			if isBotGroup && post.CreatorID != client.OwnerID() {
+			if isBotGroup && post.CreatorID != readClient.OwnerID() {
 				_ = SendTextReply(ctx, client, chatID, "Only the bot owner can switch agents in group chats.")
 				return
 			}
