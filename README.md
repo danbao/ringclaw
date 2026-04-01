@@ -399,6 +399,37 @@ Find a user's numeric ID in RingClaw logs: `creatorID=XXXXXXXX` appears on every
 | `/task`, `/note`, `/event` API | Private App if available, else Bot | Broader access with Private App |
 | ACTION block execution | Private App if available, else Bot | Cross-chat access needs Private App |
 
+### Bot App vs Private App API permissions
+
+The two client types have different RingCentral API permissions. Understanding this helps you decide whether to configure a Private App.
+
+**Bot App** receives the `TeamMessaging` permission automatically. **Private App** (REST API with JWT) can be granted `TeamMessaging` + `ReadAccounts`.
+
+| Feature | API Endpoint | Required Permission | Bot App | Private App |
+|---------|-------------|---------------------|---------|-------------|
+| Send / update / delete posts | `/team-messaging/v1/chats/{chatId}/posts` | TeamMessaging | YES | YES |
+| List / manage chats | `/team-messaging/v1/chats` | TeamMessaging | YES | YES |
+| Upload files | `/team-messaging/v1/files` | TeamMessaging | YES | YES |
+| Tasks CRUD | `/team-messaging/v1/tasks` | TeamMessaging | YES | YES |
+| Notes CRUD | `/team-messaging/v1/notes` | TeamMessaging | YES | YES |
+| Calendar Events CRUD | `/team-messaging/v1/events` | TeamMessaging | YES | YES |
+| Adaptive Cards CRUD | `/team-messaging/v1/adaptive-cards` | TeamMessaging | YES | YES |
+| Get person info | `/team-messaging/v1/persons/{id}` | TeamMessaging | YES | YES |
+| Create conversation (DM) | `/team-messaging/v1/conversations` | TeamMessaging | YES | YES |
+| Get own extension info | `/restapi/v1.0/account/~/extension/~` | (self-info) | YES | YES |
+| **Search company directory** | `/restapi/v1.0/account/~/directory/entries/search` | **ReadAccounts** | **NO** | YES |
+
+Features that depend on Directory Search (`ReadAccounts`):
+
+| Feature | What happens without Private App |
+|---------|--------------------------------|
+| Summarize conversations | Disabled — bot cannot read other users' chats |
+| Name resolution in ACTION blocks (`chatid=John`, `assignee=Alice`) | Fails — cannot look up person by name |
+| Email-based `source_user_ids` (`alice@example.com`) | Ignored — cannot resolve email to user ID |
+| Cross-chat actions (create tasks/notes in other chats) | Limited to chats the bot is a member of |
+
+> **Tip:** If you only need basic messaging and agent interaction, Bot App alone is sufficient. Add a Private App when you need summarization, name resolution, or cross-chat features.
+
 ## Media Messages
 
 RingClaw supports sending images, videos, and files to RingCentral chats.

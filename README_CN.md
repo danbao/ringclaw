@@ -400,6 +400,37 @@ graph LR
 | `/task`、`/note`、`/event` API | Private App（如有），否则 Bot | Private App 有更广的访问权限 |
 | ACTION block 执行 | Private App（如有），否则 Bot | 跨聊天操作需要 Private App |
 
+### Bot App 与 Private App API 权限对比
+
+两种客户端拥有不同的 RingCentral API 权限。了解这些差异可以帮助你决定是否需要配置 Private App。
+
+**Bot App** 自动获得 `TeamMessaging` 权限。**Private App**（REST API + JWT）可以被授予 `TeamMessaging` + `ReadAccounts` 权限。
+
+| 功能 | API 端点 | 所需权限 | Bot App | Private App |
+|------|---------|---------|---------|-------------|
+| 发送 / 更新 / 删除帖子 | `/team-messaging/v1/chats/{chatId}/posts` | TeamMessaging | 支持 | 支持 |
+| 列出 / 管理聊天 | `/team-messaging/v1/chats` | TeamMessaging | 支持 | 支持 |
+| 上传文件 | `/team-messaging/v1/files` | TeamMessaging | 支持 | 支持 |
+| 任务 CRUD | `/team-messaging/v1/tasks` | TeamMessaging | 支持 | 支持 |
+| 笔记 CRUD | `/team-messaging/v1/notes` | TeamMessaging | 支持 | 支持 |
+| 日历事件 CRUD | `/team-messaging/v1/events` | TeamMessaging | 支持 | 支持 |
+| 自适应卡片 CRUD | `/team-messaging/v1/adaptive-cards` | TeamMessaging | 支持 | 支持 |
+| 获取用户信息 | `/team-messaging/v1/persons/{id}` | TeamMessaging | 支持 | 支持 |
+| 创建会话（私聊） | `/team-messaging/v1/conversations` | TeamMessaging | 支持 | 支持 |
+| 获取自身扩展信息 | `/restapi/v1.0/account/~/extension/~` | （自身信息） | 支持 | 支持 |
+| **搜索公司目录** | `/restapi/v1.0/account/~/directory/entries/search` | **ReadAccounts** | **不支持** | 支持 |
+
+依赖目录搜索（`ReadAccounts`）的功能：
+
+| 功能 | 没有 Private App 时的表现 |
+|------|------------------------|
+| 总结会话 | 禁用 — Bot 无法读取其他用户的聊天 |
+| ACTION block 中的姓名解析（`chatid=张三`、`assignee=李四`） | 失败 — 无法按姓名查找用户 |
+| 基于邮箱的 `source_user_ids`（`alice@example.com`） | 忽略 — 无法将邮箱解析为用户 ID |
+| 跨聊天操作（在其他聊天中创建任务/笔记） | 仅限 Bot 所在的聊天 |
+
+> **提示：** 如果只需要基本的消息和 Agent 交互，Bot App 就足够了。当你需要总结会话、姓名解析或跨聊天功能时，再添加 Private App。
+
 ## 富媒体消息
 
 RingClaw 支持向 RingCentral 聊天发送图片、视频和文件。
