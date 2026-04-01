@@ -604,6 +604,86 @@ Set top-level `agent_workspace` to define the default workspace for all agents. 
 
 > **Warning:** These flags disable safety checks. Only enable them if you understand the risks. ACP agents handle permissions automatically and don't need these flags.
 
+## CLI Command Map
+
+RingClaw provides a full CLI for interacting with RingCentral Team Messaging without the bridge running. All commands support `--json` for machine-readable output.
+
+```
+ringclaw
+├── start [-f] [--api-addr]           # start bridge
+├── stop                               # stop background process
+├── restart                            # restart
+├── status                             # check if running
+├── setup                              # interactive credential wizard
+├── update / upgrade / version         # self-update
+│
+├── message                            # message operations
+│   ├── send <chatId> <text>           # send a message
+│   ├── get  <chatId> <postId>         # fetch a single message
+│   ├── list <chatId> [--count N]      # list recent messages
+│   ├── edit <chatId> <postId> <text>  # edit a message
+│   └── delete <chatId> <postId>       # delete a message
+│
+├── chat                               # chat operations
+│   ├── list [--type X] [--recent]     # list chats
+│   └── get <chatId>                   # get chat details
+│
+├── task                               # task operations
+│   ├── list <chatId>                  # list tasks
+│   ├── create <chatId> <subject>      # create task
+│   ├── get <taskId>                   # get task details
+│   ├── update <taskId> <key=value>    # update task
+│   ├── complete <taskId>              # mark complete
+│   └── delete <taskId>               # delete task
+│
+├── note                               # note operations
+│   ├── list <chatId>                  # list notes
+│   ├── create <chatId> <title> [body] # create + auto-publish
+│   ├── get <noteId>                   # get note
+│   ├── update <noteId> <key=value>    # update note
+│   ├── lock <noteId>                  # lock for editing
+│   ├── unlock <noteId>               # unlock
+│   └── delete <noteId>               # delete
+│
+├── event                              # event operations
+│   ├── list [chatId]                  # list events
+│   ├── create <title> <start> <end>   # create event
+│   ├── get <eventId>                  # get event
+│   ├── update <eventId> <key=value>   # update event
+│   └── delete <eventId>              # delete event
+│
+├── card                               # adaptive card operations
+│   ├── create <chatId> <json-file>    # create from JSON file
+│   ├── get <cardId>                   # get card
+│   └── delete <cardId>               # delete card
+│
+├── user                               # user operations
+│   ├── search <query>                 # search company directory
+│   └── get <personId>                # get person info
+│
+└── file                               # file operations
+    └── upload <chatId> <file-path>    # upload local file
+```
+
+Examples:
+
+```bash
+# List chats sorted by recent activity
+ringclaw chat list --recent --json
+
+# Send a message
+ringclaw message send 123456 "Hello from CLI"
+
+# List tasks in a chat
+ringclaw task list 123456
+
+# Search company directory
+ringclaw user search "Alice"
+
+# Upload a file
+ringclaw file upload 123456 ./report.pdf
+```
+
 ## Background Mode
 
 ```bash

@@ -606,6 +606,86 @@ curl -X POST http://127.0.0.1:18011/api/send \
 
 > **注意：** 这些参数会跳过安全检查，请了解风险后再启用。ACP 模式的 Agent 会自动处理权限，无需配置。
 
+## CLI 命令索引
+
+RingClaw 提供完整的 CLI，无需启动 Bridge 即可直接操作 RingCentral Team Messaging。所有命令均支持 `--json` 输出机器可读的 JSON 格式。
+
+```
+ringclaw
+├── start [-f] [--api-addr]           # 启动桥接
+├── stop                               # 停止后台进程
+├── restart                            # 重启
+├── status                             # 检查运行状态
+├── setup                              # 交互式凭据配置
+├── update / upgrade / version         # 自动更新
+│
+├── message                            # 消息操作
+│   ├── send <chatId> <text>           # 发送消息
+│   ├── get  <chatId> <postId>         # 获取单条消息
+│   ├── list <chatId> [--count N]      # 列出最近消息
+│   ├── edit <chatId> <postId> <text>  # 编辑消息
+│   └── delete <chatId> <postId>       # 删除消息
+│
+├── chat                               # 聊天操作
+│   ├── list [--type X] [--recent]     # 列出聊天
+│   └── get <chatId>                   # 获取聊天详情
+│
+├── task                               # 任务操作
+│   ├── list <chatId>                  # 列出任务
+│   ├── create <chatId> <subject>      # 创建任务
+│   ├── get <taskId>                   # 获取任务详情
+│   ├── update <taskId> <key=value>    # 更新任务
+│   ├── complete <taskId>              # 标记完成
+│   └── delete <taskId>               # 删除任务
+│
+├── note                               # 笔记操作
+│   ├── list <chatId>                  # 列出笔记
+│   ├── create <chatId> <title> [body] # 创建并自动发布
+│   ├── get <noteId>                   # 获取笔记
+│   ├── update <noteId> <key=value>    # 更新笔记
+│   ├── lock <noteId>                  # 锁定编辑
+│   ├── unlock <noteId>               # 解锁
+│   └── delete <noteId>               # 删除
+│
+├── event                              # 日历事件操作
+│   ├── list [chatId]                  # 列出事件
+│   ├── create <title> <start> <end>   # 创建事件
+│   ├── get <eventId>                  # 获取事件
+│   ├── update <eventId> <key=value>   # 更新事件
+│   └── delete <eventId>              # 删除事件
+│
+├── card                               # 自适应卡片操作
+│   ├── create <chatId> <json-file>    # 从 JSON 文件创建
+│   ├── get <cardId>                   # 获取卡片
+│   └── delete <cardId>               # 删除卡片
+│
+├── user                               # 用户操作
+│   ├── search <query>                 # 搜索公司目录
+│   └── get <personId>                # 获取用户信息
+│
+└── file                               # 文件操作
+    └── upload <chatId> <file-path>    # 上传本地文件
+```
+
+示例：
+
+```bash
+# 按最近活动排序列出聊天
+ringclaw chat list --recent --json
+
+# 发送消息
+ringclaw message send 123456 "来自 CLI 的消息"
+
+# 列出聊天中的任务
+ringclaw task list 123456
+
+# 搜索公司目录
+ringclaw user search "Alice"
+
+# 上传文件
+ringclaw file upload 123456 ./report.pdf
+```
+
 ## 后台运行
 
 ```bash

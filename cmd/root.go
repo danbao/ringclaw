@@ -25,6 +25,8 @@ func FullVersion() string {
 	return fmt.Sprintf("%s (%s)", Version, short)
 }
 
+var jsonOutput bool
+
 var rootCmd = &cobra.Command{
 	Use:   "ringclaw",
 	Short: "RingCentral AI agent bridge",
@@ -33,6 +35,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
 	rootCmd.Version = FullVersion()
 }
 
