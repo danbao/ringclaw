@@ -23,7 +23,7 @@ type ChatMessage struct {
 // httpFormat abstracts the request/response protocol for different HTTP APIs.
 type httpFormat interface {
 	buildRequest(conversationID, message string, opts formatOpts) ([]byte, error)
-	parseResponse(body []byte, conversationID string) (string, error)
+	parseResponse(body []byte) (string, error)
 	managesHistory() bool
 	supportsCwd() bool
 }
@@ -182,7 +182,7 @@ func (a *HTTPAgent) Chat(ctx context.Context, conversationID string, message str
 		return "", err
 	}
 
-	reply, err := a.format.parseResponse(respBody, conversationID)
+	reply, err := a.format.parseResponse(respBody)
 	if err != nil {
 		return "", err
 	}
@@ -254,7 +254,7 @@ func (f *openaiFormat) buildRequest(_, message string, opts formatOpts) ([]byte,
 	})
 }
 
-func (f *openaiFormat) parseResponse(body []byte, _ string) (string, error) {
+func (f *openaiFormat) parseResponse(body []byte) (string, error) {
 	var result struct {
 		Choices []struct {
 			Message struct {
@@ -299,7 +299,7 @@ func (f *nanoclawFormat) buildRequest(conversationID, message string, opts forma
 	return json.Marshal(payload)
 }
 
-func (f *nanoclawFormat) parseResponse(body []byte, _ string) (string, error) {
+func (f *nanoclawFormat) parseResponse(body []byte) (string, error) {
 	var parsed struct {
 		Reply string `json:"reply"`
 	}
@@ -315,27 +315,44 @@ func (f *nanoclawFormat) parseResponse(body []byte, _ string) (string, error) {
 
 // --- Dify format ---
 
+const difySessionMaxAge = 24 * time.Hour
+
 // difySession holds Dify-side state for one RingClaw conversation.
 type difySession struct {
-	convID string // Dify conversation_id
-	user   string // user identifier sent to Dify
+	convID     string    // Dify conversation_id
+	user       string    // user identifier sent to Dify
+	lastAccess time.Time // for stale session eviction
 }
 
 // difyFormat implements the Dify chatflow API.
 // Dify manages conversation history server-side, identified by its own conversation_id.
 // We map each RingClaw conversationID to the corresponding Dify session.
 type difyFormat struct {
-	baseURL    string
-	apiKey     string
-	httpClient *http.Client
-	mu         sync.Mutex
-	sessions   map[string]difySession // ringclawConvID -> dify session
+	baseURL       string
+	apiKey        string
+	httpClient    *http.Client
+	mu            sync.Mutex
+	sessions      map[string]difySession // ringclawConvID -> dify session
+	pendingConvID string                 // set by buildRequest, read by parseResponse (same Chat call)
 }
 
 func newDifyFormat(endpoint, apiKey string, client *http.Client) *difyFormat {
+	// Derive baseURL: strip from "/v1/" onward so DELETE paths work correctly
+	// e.g. "https://api.dify.ai/v1/chat-messages" → "https://api.dify.ai"
 	baseURL := endpoint
 	if u, err := url.Parse(endpoint); err == nil {
-		baseURL = u.Scheme + "://" + u.Host
+		path := u.Path
+		if idx := strings.Index(path, "/v1/"); idx >= 0 {
+			u.Path = path[:idx]
+		} else {
+			u.Path = ""
+		}
+		u.RawQuery = ""
+		u.Fragment = ""
+		baseURL = u.String()
+	}
+	if strings.HasPrefix(endpoint, "http://") {
+		slog.Warn("dify endpoint uses HTTP; consider HTTPS to avoid 301 redirect (POST→GET downgrade)", "endpoint", endpoint)
 	}
 	return &difyFormat{
 		baseURL:    baseURL,
@@ -354,11 +371,20 @@ func (f *difyFormat) buildRequest(conversationID, message string, opts formatOpt
 		user = conversationID
 	}
 
+	now := time.Now()
 	f.mu.Lock()
 	s := f.sessions[conversationID]
 	s.user = user
+	s.lastAccess = now
 	f.sessions[conversationID] = s
 	difyConvID := s.convID
+	f.pendingConvID = conversationID
+	// Evict stale sessions
+	for k, v := range f.sessions {
+		if k != conversationID && now.Sub(v.lastAccess) > difySessionMaxAge {
+			delete(f.sessions, k)
+		}
+	}
 	f.mu.Unlock()
 
 	return json.Marshal(map[string]interface{}{
@@ -370,7 +396,7 @@ func (f *difyFormat) buildRequest(conversationID, message string, opts formatOpt
 	})
 }
 
-func (f *difyFormat) parseResponse(body []byte, conversationID string) (string, error) {
+func (f *difyFormat) parseResponse(body []byte) (string, error) {
 	var result struct {
 		Answer         string `json:"answer"`
 		ConversationID string `json:"conversation_id"`
@@ -381,19 +407,21 @@ func (f *difyFormat) parseResponse(body []byte, conversationID string) (string, 
 	if strings.TrimSpace(result.Answer) == "" {
 		return "", fmt.Errorf("empty answer in dify response")
 	}
-	if result.ConversationID != "" && conversationID != "" {
-		f.mu.Lock()
-		s := f.sessions[conversationID]
+	// Store the Dify conversation_id using the pendingConvID set by buildRequest
+	f.mu.Lock()
+	convID := f.pendingConvID
+	if result.ConversationID != "" && convID != "" {
+		s := f.sessions[convID]
 		s.convID = result.ConversationID
-		f.sessions[conversationID] = s
-		f.mu.Unlock()
+		f.sessions[convID] = s
 	}
+	f.mu.Unlock()
 	return strings.TrimSpace(result.Answer), nil
 }
 
 // resetConversation clears the local session mapping and asynchronously deletes
 // the conversation on the Dify server so history is fully wiped on both sides.
-func (f *difyFormat) resetConversation(ctx context.Context, conversationID string) {
+func (f *difyFormat) resetConversation(_ context.Context, conversationID string) {
 	f.mu.Lock()
 	s := f.sessions[conversationID]
 	delete(f.sessions, conversationID)
@@ -402,8 +430,10 @@ func (f *difyFormat) resetConversation(ctx context.Context, conversationID strin
 	if s.convID == "" {
 		return
 	}
-	// Fire-and-forget: the user's /new or /clear should not block on the network call.
+	// Fire-and-forget with Background context so it survives handler return.
 	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 		if err := f.deleteConversation(ctx, s.convID, s.user); err != nil {
 			slog.Warn("dify: delete conversation failed", "convID", s.convID, "error", err)
 		}
@@ -416,7 +446,7 @@ func (f *difyFormat) deleteConversation(ctx context.Context, convID, user string
 	if err != nil {
 		return err
 	}
-	endpoint := f.baseURL + "/v1/conversations/" + convID
+	endpoint := f.baseURL + "/v1/conversations/" + url.PathEscape(convID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err

@@ -295,10 +295,10 @@ func TestHTTPAgent_Dify_Chat_StoresConversationID(t *testing.T) {
 }
 
 func TestHTTPAgent_Dify_ResetSession_DeletesServerConversation(t *testing.T) {
-	var deletedConvID string
+	deleted := make(chan string, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodDelete {
-			deletedConvID = strings.TrimPrefix(r.URL.Path, "/v1/conversations/")
+			deleted <- strings.TrimPrefix(r.URL.Path, "/v1/conversations/")
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]bool{"result": true})
 			return
@@ -324,14 +324,14 @@ func TestHTTPAgent_Dify_ResetSession_DeletesServerConversation(t *testing.T) {
 
 	ag.ResetSession(context.Background(), "rc-conv-1")
 
-	// Give the goroutine time to complete the DELETE
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && deletedConvID == "" {
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	if deletedConvID != "dify-conv-abc" {
-		t.Errorf("expected DELETE for conv dify-conv-abc, got %q", deletedConvID)
+	// Wait for the fire-and-forget goroutine via channel
+	select {
+	case convID := <-deleted:
+		if convID != "dify-conv-abc" {
+			t.Errorf("expected DELETE for conv dify-conv-abc, got %q", convID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for DELETE call")
 	}
 
 	// Local session should also be cleared
