@@ -106,7 +106,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 			}
 		}
 	} else {
-		slog.Info("no private app configured, summarize and cross-chat features disabled")
+		slog.Warn("no private app configured — the following features require a Private App and will be unavailable: summarize, directory search, name resolution in ACTION blocks, email-based source_user_ids")
+		for _, id := range cfg.RC.SourceUserIDs {
+			if strings.Contains(id, "@") {
+				slog.Error("source_user_ids contains an email address but Private App is not configured for directory lookup — this entry will be ignored", "email", id)
+			}
+		}
 	}
 
 	// Discover bot DM chat
