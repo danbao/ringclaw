@@ -362,6 +362,18 @@ graph LR
 - **`bot_mention_only: true`**（默认）— Bot 在群聊中只有被 @mention 时才响应
 - **`bot_mention_only: false`** — Bot 响应允许群中的所有消息
 
+### 用户白名单
+
+`source_user_ids` 限制 Bot 只响应指定用户的消息。支持数字用户 ID 或邮箱（启动时通过目录 API 自动解析为 ID）。不配置则响应所有用户。
+
+```json
+"ringcentral": {
+  "source_user_ids": ["alice@example.com", "3061708020"]
+}
+```
+
+用户数字 ID 可以从 RingClaw 日志中获取：收到消息时会打印 `creatorID=XXXXXXXX`。
+
 ### 权限矩阵
 
 | 操作 | Bot 私聊 | Bot 群聊 (owner) | Bot 群聊 (非 owner) |
@@ -469,6 +481,7 @@ curl -X POST http://127.0.0.1:18011/api/send \
   "ringcentral": {
     "bot_token": "your_bot_token",
     "chat_ids": ["chat_id_1", "chat_id_2"],
+    "source_user_ids": ["alice@example.com"],
     "bot_mention_only": true,
     "server_url": "https://platform.ringcentral.com",
     "client_id": "",

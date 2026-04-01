@@ -361,6 +361,18 @@ Messages from chats not in `chat_ids` are silently dropped by the monitor.
 - **`bot_mention_only: true`** (default) — Bot only responds when @mentioned in group chats
 - **`bot_mention_only: false`** — Bot responds to all messages in allowed group chats
 
+### User allowlist
+
+`source_user_ids` restricts which users the bot responds to. Accepts numeric RingCentral user IDs or email addresses (resolved to IDs at startup via the directory API). Empty = respond to everyone.
+
+```json
+"ringcentral": {
+  "source_user_ids": ["alice@example.com", "3061708020"]
+}
+```
+
+Find a user's numeric ID in RingClaw logs: `creatorID=XXXXXXXX` appears on every received message.
+
 ### Permission matrix
 
 | Operation | Bot DM | Bot Group (owner) | Bot Group (others) |
@@ -468,6 +480,7 @@ Config file: `~/.ringclaw/config.json`
   "ringcentral": {
     "bot_token": "your_bot_token",
     "chat_ids": ["chat_id_1", "chat_id_2"],
+    "source_user_ids": ["alice@example.com"],
     "bot_mention_only": true,
     "server_url": "https://platform.ringcentral.com",
     "client_id": "",
