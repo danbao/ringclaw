@@ -50,6 +50,15 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Initialize log level: flag > config > default (info)
+	levelStr := cfg.LogLevel
+	if logLevelFlag != "" {
+		levelStr = logLevelFlag
+	}
+	logLevel := config.ParseLogLevel(levelStr)
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
+	config.SetDebugMode(logLevel == slog.LevelDebug)
+
 	// Validate RC config: bot token is required, private app is optional
 	if cfg.RC.BotToken == "" {
 		return fmt.Errorf("bot token not configured. Set RC_BOT_TOKEN environment variable or add bot_token to config file. Run 'ringclaw setup' for guided configuration")

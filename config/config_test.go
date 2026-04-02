@@ -156,3 +156,38 @@ func TestSaveAndReload(t *testing.T) {
 		t.Errorf("agent type mismatch: got %q", reloaded.Agents["codex"].Type)
 	}
 }
+
+func TestParseLogLevel(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"debug", "DEBUG"},
+		{"DEBUG", "DEBUG"},
+		{"info", "INFO"},
+		{"INFO", "INFO"},
+		{"warn", "WARN"},
+		{"warning", "WARN"},
+		{"error", "ERROR"},
+		{"", "INFO"},
+		{"unknown", "INFO"},
+	}
+	for _, tt := range tests {
+		got := ParseLogLevel(tt.input).String()
+		if got != tt.want {
+			t.Errorf("ParseLogLevel(%q) = %s, want %s", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestDebugMode(t *testing.T) {
+	SetDebugMode(false)
+	if IsDebug() {
+		t.Error("expected debug mode off")
+	}
+	SetDebugMode(true)
+	if !IsDebug() {
+		t.Error("expected debug mode on")
+	}
+	SetDebugMode(false)
+}

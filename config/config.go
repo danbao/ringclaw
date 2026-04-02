@@ -3,16 +3,41 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 )
+
+var debugMode atomic.Bool
+
+// SetDebugMode enables or disables debug mode globally.
+func SetDebugMode(enabled bool) { debugMode.Store(enabled) }
+
+// IsDebug returns true if debug mode is active.
+func IsDebug() bool { return debugMode.Load() }
+
+// ParseLogLevel converts a string to slog.Level.
+func ParseLogLevel(s string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
 
 // Config holds the application configuration.
 type Config struct {
 	DefaultAgent   string                 `json:"default_agent"`
 	AgentWorkspace string                 `json:"agent_workspace,omitempty"`
 	APIAddr        string                 `json:"api_addr,omitempty"`
+	LogLevel       string                 `json:"log_level,omitempty"` // "debug", "info" (default), "warn", "error"
 	Agents         map[string]AgentConfig `json:"agents"`
 	RC             RCConfig               `json:"ringcentral,omitempty"`
 	Heartbeat      HeartbeatConfig        `json:"heartbeat,omitempty"`

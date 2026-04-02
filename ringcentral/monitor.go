@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/ringclaw/ringclaw/config"
 )
 
 const (
@@ -376,7 +377,7 @@ func (m *Monitor) calcBackoff() time.Duration {
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	if config.IsDebug() || len(s) <= n {
 		return s
 	}
 	return s[:n] + "..."

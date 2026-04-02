@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/ringclaw/ringclaw/config"
 	"github.com/ringclaw/ringclaw/ringcentral"
 )
 
@@ -39,7 +40,7 @@ func SendTextReply(ctx context.Context, client *ringcentral.Client, chatID, text
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	if config.IsDebug() || len(s) <= n {
 		return s
 	}
 	return s[:n] + "..."

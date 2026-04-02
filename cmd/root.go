@@ -25,7 +25,10 @@ func FullVersion() string {
 	return fmt.Sprintf("%s (%s)", Version, short)
 }
 
-var jsonOutput bool
+var (
+	jsonOutput   bool
+	logLevelFlag string
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "ringclaw",
@@ -36,6 +39,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
+	rootCmd.PersistentFlags().StringVar(&logLevelFlag, "log-level", "", "Log level: debug, info, warn, error")
 	rootCmd.Version = FullVersion()
 }
 
