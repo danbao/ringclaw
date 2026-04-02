@@ -396,7 +396,7 @@ Highlight key topics, decisions, and action items if any.
 --- Messages (%d total) ---
 %s
 --- End of Messages ---`,
-		userReq, chatLabel, timeDesc, ActionPrompt, len(lines), strings.Join(lines, "\n"))
+		userReq, chatLabel, timeDesc, ActionPrompt(), len(lines), strings.Join(lines, "\n"))
 
 	slog.Info("built prompt", "component", "summarize", "chatLabel", chatLabel, "messages", len(lines), "chars", len(prompt))
 	return prompt, nil

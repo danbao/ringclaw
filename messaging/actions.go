@@ -5,13 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 
+	"github.com/ringclaw/ringclaw/internal/util"
 	"github.com/ringclaw/ringclaw/ringcentral"
 )
 
-// ActionPrompt is appended to prompts to enable the AI agent to trigger actions.
-const ActionPrompt = `
+// defaultActionPrompt is the built-in prompt for ACTION blocks.
+const defaultActionPrompt = `
 
 IMPORTANT: You are running inside a RingCentral Team Messaging bot. You have REAL actions that execute via API — do NOT generate files, do NOT suggest manual steps. Instead, append ACTION blocks and the system will execute them automatically.
 
@@ -52,6 +56,28 @@ Rules:
 - Do NOT create files. Do NOT output raw JSON in your reply. Use ACTION blocks so the system executes them.
 - If no action is needed, reply normally without ACTION blocks.
 `
+
+var (
+	actionPromptOnce sync.Once
+	actionPromptText string
+)
+
+// ActionPrompt returns the action prompt, loading from ~/.ringclaw/action_prompt.md if it exists.
+func ActionPrompt() string {
+	actionPromptOnce.Do(func() {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			customPath := filepath.Join(home, ".ringclaw", "action_prompt.md")
+			if data, err := os.ReadFile(customPath); err == nil && len(data) > 0 {
+				actionPromptText = "\n" + string(data) + "\n"
+				slog.Info("loaded custom action prompt", "path", customPath)
+				return
+			}
+		}
+		actionPromptText = defaultActionPrompt
+	})
+	return actionPromptText
+}
 
 // AgentAction represents a parsed action from the agent's response.
 type AgentAction struct {
@@ -275,7 +301,7 @@ func ExecuteAgentActions(ctx context.Context, replyClient, actionClient *ringcen
 				results = append(results, fmt.Sprintf("Failed to send message: %v", err))
 				continue
 			}
-			slog.Info("action: sent message", "chatID", targetChat, "text", truncate(body, 60))
+			slog.Info("action: sent message", "chatID", targetChat, "text", util.Truncate(body, 60))
 
 		default:
 			slog.Warn("action: unknown action type, sending body as message", "type", a.Type)

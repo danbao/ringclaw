@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ringclaw/ringclaw/internal/util"
 )
 
 func TestMonitor_MarkAndCheckSentPost(t *testing.T) {
@@ -696,7 +698,7 @@ func TestTruncate(t *testing.T) {
 		{"", 5, ""},
 	}
 	for _, tt := range tests {
-		got := truncate(tt.s, tt.n)
+		got := util.Truncate(tt.s, tt.n)
 		if got != tt.want {
 			t.Errorf("truncate(%q, %d) = %q, want %q", tt.s, tt.n, got, tt.want)
 		}

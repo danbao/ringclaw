@@ -41,11 +41,11 @@ func (h *Handler) classifyAndRoute(ctx context.Context, client *ringcentral.Clie
 func (h *Handler) routeSummarize(ctx context.Context, client *ringcentral.Client, readClient *ringcentral.Client, post ringcentral.Post, isBotGroup bool) bool {
 	chatID := post.GroupID
 	if readClient == client {
-		_ = SendTextReply(ctx, client, chatID, "Summarize requires a Private App to be configured. Run 'ringclaw setup' to add one.")
+		logSendError(SendTextReply(ctx, client, chatID, "Summarize requires a Private App to be configured. Run 'ringclaw setup' to add one."))
 		return true
 	}
 	if isBotGroup {
-		_ = SendTextReply(ctx, client, chatID, "This command can only be used in a direct message with the bot.")
+		logSendError(SendTextReply(ctx, client, chatID, "This command can only be used in a direct message with the bot."))
 		return true
 	}
 	h.handleSummarize(ctx, client, readClient, post)
@@ -65,10 +65,10 @@ func (h *Handler) handleSummarize(ctx context.Context, replyClient *ringcentral.
 		if placeholderID != "" {
 			if err := UpdatePostText(ctx, replyClient, chatID, placeholderID, reply); err != nil {
 				slog.Error("failed to update placeholder", "component", "handler", "error", err)
-				_ = SendTextReply(ctx, replyClient, chatID, reply)
+				logSendError(SendTextReply(ctx, replyClient, chatID, reply))
 			}
 		} else {
-			_ = SendTextReply(ctx, replyClient, chatID, reply)
+			logSendError(SendTextReply(ctx, replyClient, chatID, reply))
 		}
 	}
 
@@ -113,7 +113,7 @@ func (h *Handler) handleSummarize(ctx context.Context, replyClient *ringcentral.
 		// Execute actions in the current chat (not the summarized chat) using readClient
 		results := ExecuteAgentActions(ctx, replyClient, readClient, chatID, actions)
 		if len(results) > 0 {
-			_ = SendTextReply(ctx, replyClient, chatID, strings.Join(results, "\n"))
+			logSendError(SendTextReply(ctx, replyClient, chatID, strings.Join(results, "\n")))
 		}
 	}
 }

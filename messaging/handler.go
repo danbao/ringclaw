@@ -6,11 +6,15 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ringclaw/ringclaw/agent"
+	"github.com/ringclaw/ringclaw/internal/util"
 	"github.com/ringclaw/ringclaw/ringcentral"
 )
+
+const maxSeenMsgs = 10000
 
 // AgentFactory creates an agent by config name. Returns nil if the name is unknown.
 type AgentFactory func(ctx context.Context, name string) agent.Agent
@@ -38,6 +42,7 @@ type Handler struct {
 	version       string
 	startTime     time.Time
 	seenMsgs      sync.Map // map[string]time.Time — dedup by post ID
+	seenMsgCount  int64    // approximate count for capacity limiting
 	cronStore     *CronStore
 }
 
@@ -53,14 +58,20 @@ func NewHandler(factory AgentFactory, saveDefault SaveDefaultFunc, version strin
 }
 
 // cleanSeenMsgs removes entries older than 5 minutes from the dedup cache.
+// Also enforces maxSeenMsgs capacity by removing oldest entries.
 func (h *Handler) cleanSeenMsgs() {
 	cutoff := time.Now().Add(-5 * time.Minute)
+	var removed int64
 	h.seenMsgs.Range(func(key, value any) bool {
 		if t, ok := value.(time.Time); ok && t.Before(cutoff) {
 			h.seenMsgs.Delete(key)
+			removed++
 		}
 		return true
 	})
+	if removed > 0 {
+		atomic.AddInt64(&h.seenMsgCount, -removed)
+	}
 }
 
 // SetCustomAliases sets custom alias mappings from config.
@@ -260,18 +271,21 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 			slog.Debug("duplicate message skipped", "component", "handler", "postID", post.ID)
 			return
 		}
-		go h.cleanSeenMsgs()
+		atomic.AddInt64(&h.seenMsgCount, 1)
+		if atomic.LoadInt64(&h.seenMsgCount) > maxSeenMsgs/2 {
+			go h.cleanSeenMsgs()
+		}
 	}
 
 	chatID := post.GroupID
-	slog.Info("received message", "component", "handler", "creatorID", post.CreatorID, "chatID", chatID, "text", truncate(text, 80))
+	slog.Info("received message", "component", "handler", "creatorID", post.CreatorID, "chatID", chatID, "text", util.Truncate(text, 80))
 
 	// In bot group chats (not bot DM), restrict privileged commands to the bot owner
 	isBotGroup := client.IsBot() && !client.IsBotDM(chatID)
 	if isBotGroup && isPrivilegedCommand(text) {
 		if post.CreatorID != readClient.OwnerID() {
-			slog.Info("blocked privileged command from non-owner", "component", "handler", "creatorID", post.CreatorID, "command", truncate(text, 30))
-			_ = SendTextReply(ctx, client, chatID, "Only the bot owner can use this command in group chats.")
+			slog.Info("blocked privileged command from non-owner", "component", "handler", "creatorID", post.CreatorID, "command", util.Truncate(text, 30))
+			logSendError(SendTextReply(ctx, client, chatID, "Only the bot owner can use this command in group chats."))
 			return
 		}
 	}
@@ -307,7 +321,7 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 		return
 	} else if strings.HasPrefix(text, "/cron") {
 		if h.cronStore == nil {
-			_ = SendTextReply(ctx, client, chatID, "Cron is not configured.")
+			logSendError(SendTextReply(ctx, client, chatID, "Cron is not configured."))
 			return
 		}
 		reply := HandleCronCommand(h.cronStore, text, chatID)
@@ -354,7 +368,7 @@ func (h *Handler) HandleMessage(ctx context.Context, client *ringcentral.Client,
 		if len(agentNames) == 1 && h.isKnownAgent(agentNames[0]) {
 			// Block agent switch from non-owner in bot group chats
 			if isBotGroup && post.CreatorID != readClient.OwnerID() {
-				_ = SendTextReply(ctx, client, chatID, "Only the bot owner can switch agents in group chats.")
+				logSendError(SendTextReply(ctx, client, chatID, "Only the bot owner can switch agents in group chats."))
 				return
 			}
 			reply := h.switchDefault(ctx, agentNames[0])
@@ -415,7 +429,7 @@ func (h *Handler) sendToDefaultAgent(ctx context.Context, client *ringcentral.Cl
 	var reply string
 	if ag != nil {
 		var err error
-		reply, err = h.chatWithAgent(ctx, ag, conversationID, text+ActionPrompt)
+		reply, err = h.chatWithAgent(ctx, ag, conversationID, text+ActionPrompt())
 		if err != nil {
 			reply = fmt.Sprintf("Error: %v", err)
 		}
@@ -447,7 +461,7 @@ func (h *Handler) sendToNamedAgent(ctx context.Context, client *ringcentral.Clie
 		return
 	}
 
-	reply, err := h.chatWithAgent(ctx, ag, conversationID, message+ActionPrompt)
+	reply, err := h.chatWithAgent(ctx, ag, conversationID, message+ActionPrompt())
 	if err != nil {
 		reply = fmt.Sprintf("Error: %v", err)
 	}
@@ -472,7 +486,7 @@ func (h *Handler) broadcastToAgents(ctx context.Context, client *ringcentral.Cli
 				ch <- result{name: n, reply: fmt.Sprintf("Error: %v", err)}
 				return
 			}
-			reply, err := h.chatWithAgent(ctx, ag, conversationID, message+ActionPrompt)
+			reply, err := h.chatWithAgent(ctx, ag, conversationID, message+ActionPrompt())
 			if err != nil {
 				ch <- result{name: n, reply: fmt.Sprintf("Error: %v", err)}
 				return
@@ -501,7 +515,7 @@ func (h *Handler) sendReplyWithActions(ctx context.Context, client *ringcentral.
 		results := ExecuteAgentActions(ctx, client, actionClient, chatID, actions)
 		if len(results) > 0 {
 			defer func() {
-				_ = SendTextReply(ctx, client, chatID, strings.Join(results, "\n"))
+				logSendError(SendTextReply(ctx, client, chatID, strings.Join(results, "\n")))
 			}()
 		}
 	}
@@ -562,7 +576,7 @@ func (h *Handler) chatWithAgent(ctx context.Context, ag agent.Agent, userID, mes
 		return "", err
 	}
 
-	slog.Info("agent replied", "component", "handler", "info", info, "elapsed", elapsed, "reply", truncate(reply, 100))
+	slog.Info("agent replied", "component", "handler", "info", info, "elapsed", elapsed, "reply", util.Truncate(reply, 100))
 	return reply, nil
 }
 

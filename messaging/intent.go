@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ringclaw/ringclaw/agent"
+	"github.com/ringclaw/ringclaw/internal/util"
 )
 
 // Intent represents the classified intent of a user message.
@@ -84,7 +85,7 @@ func classifyIntent(ctx context.Context, ag agent.Agent, text string) Intent {
 	}
 
 	intent := parseIntentReply(reply)
-	slog.Info("intent classified", "component", "intent", "text", truncate(text, 60), "intent", string(intent), "elapsed", elapsed)
+	slog.Info("intent classified", "component", "intent", "text", util.Truncate(text, 60), "intent", string(intent), "elapsed", elapsed)
 	return intent
 }
 

@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"github.com/ringclaw/ringclaw/config"
+	"github.com/ringclaw/ringclaw/internal/util"
 )
 
 const (
@@ -360,7 +360,7 @@ func (m *Monitor) handleWSMessage(ctx context.Context, msg []byte) {
 		}
 	}
 
-	slog.Info("received post", "component", "monitor", "creatorID", event.Body.CreatorID, "chatID", event.Body.GroupID, "text", truncate(event.Body.Text, 50))
+	slog.Info("received post", "component", "monitor", "creatorID", event.Body.CreatorID, "chatID", event.Body.GroupID, "text", util.Truncate(event.Body.Text, 50))
 
 	go m.handler(ctx, m.client, m.readClient(), event.Body)
 }
@@ -376,12 +376,7 @@ func (m *Monitor) calcBackoff() time.Duration {
 	return d
 }
 
-func truncate(s string, n int) string {
-	if config.IsDebug() || len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
+
 
 // isBotMentioned checks if the bot's extension ID appears in the post mentions.
 func (m *Monitor) isBotMentioned(mentions []Mention) bool {
