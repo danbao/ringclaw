@@ -579,6 +579,10 @@ IMPORTANT: You are running inside a RingCentral Team Messaging bot. You have REA
 
 Available actions (append at the END of your response):
 
+ACTION:MESSAGE chatid=<target chat ID or person name>
+<message content>
+END_ACTION
+
 ACTION:NOTE title=<title> [chatid=<target chat ID>]
 <body content>
 END_ACTION
@@ -601,6 +605,7 @@ Card elements: TextBlock, FactSet, ColumnSet/Column, Image, Container, Action.Op
 
 Rules:
 - Your text reply comes FIRST, then ACTION blocks at the end.
+- When the user asks to send a message to someone → use ACTION:MESSAGE with the person's name as chatid.
 - When the user asks for cards, rich display, progress, reports, or structured data → use ACTION:CARD.
 - When the user asks to create notes/tasks/events → use the corresponding ACTION block.
 - chatid accepts a numeric Chat ID, a ![:Team](ID) mention, OR a person's name (e.g., chatid=Ian Zhang). The system will automatically resolve names to chat IDs via directory search.
@@ -731,6 +736,33 @@ func parseActionParams(s string) []keyValue {
 	return result
 }
 
+// bestDirectoryMatch finds the best matching directory entry:
+// exact match first, then shortest fuzzy match.
+func bestDirectoryMatch(records []ringcentral.DirectoryEntry, name string) *ringcentral.DirectoryEntry {
+	// Pass 1: exact match (case-insensitive)
+	for i := range records {
+		e := &records[i]
+		fullName := strings.TrimSpace(e.FirstName + " " + e.LastName)
+		if exactMatch(fullName, name) || exactMatch(e.Email, name) {
+			return e
+		}
+	}
+	// Pass 2: fuzzy match — prefer the shortest full name (closest to input)
+	var best *ringcentral.DirectoryEntry
+	bestLen := int(^uint(0) >> 1) // max int
+	for i := range records {
+		e := &records[i]
+		fullName := strings.TrimSpace(e.FirstName + " " + e.LastName)
+		if fuzzyMatch(fullName, name) || fuzzyMatch(e.Email, name) {
+			if len(fullName) < bestLen {
+				best = e
+				bestLen = len(fullName)
+			}
+		}
+	}
+	return best
+}
+
 // resolveNameToChatID resolves a person name to a Direct chat ID via directory search.
 func resolveNameToChatID(ctx context.Context, client *ringcentral.Client, name string) (string, error) {
 	result, err := client.SearchDirectory(ctx, name)
@@ -741,15 +773,7 @@ func resolveNameToChatID(ctx context.Context, client *ringcentral.Client, name s
 		return "", fmt.Errorf("no person found matching '%s'", name)
 	}
 
-	var best *ringcentral.DirectoryEntry
-	for i := range result.Records {
-		e := &result.Records[i]
-		fullName := strings.TrimSpace(e.FirstName + " " + e.LastName)
-		if fuzzyMatch(fullName, name) || fuzzyMatch(e.Email, name) {
-			best = e
-			break
-		}
-	}
+	best := bestDirectoryMatch(result.Records, name)
 	if best == nil {
 		return "", fmt.Errorf("no person matched '%s' (got %d results)", name, len(result.Records))
 	}
@@ -774,15 +798,7 @@ func resolveNameToPersonID(ctx context.Context, client *ringcentral.Client, name
 		return "", fmt.Errorf("no person found matching '%s'", name)
 	}
 
-	var best *ringcentral.DirectoryEntry
-	for i := range result.Records {
-		e := &result.Records[i]
-		fullName := strings.TrimSpace(e.FirstName + " " + e.LastName)
-		if fuzzyMatch(fullName, name) || fuzzyMatch(e.Email, name) {
-			best = e
-			break
-		}
-	}
+	best := bestDirectoryMatch(result.Records, name)
 	if best == nil {
 		return "", fmt.Errorf("no person matched '%s'", name)
 	}
@@ -932,6 +948,28 @@ func ExecuteAgentActions(ctx context.Context, replyClient, actionClient *ringcen
 				continue
 			}
 			slog.Info("action: created adaptive card", "cardID", card.ID, "chatID", targetChat)
+
+		case "MESSAGE":
+			body := strings.TrimSpace(a.Body)
+			if body == "" {
+				continue
+			}
+			if err := SendTextReply(ctx, actionClient, targetChat, body); err != nil {
+				slog.Error("action: send message failed", "error", err, "chatID", targetChat)
+				results = append(results, fmt.Sprintf("Failed to send message: %v", err))
+				continue
+			}
+			slog.Info("action: sent message", "chatID", targetChat, "text", truncate(body, 60))
+
+		default:
+			slog.Warn("action: unknown action type, sending body as message", "type", a.Type)
+			body := strings.TrimSpace(a.Body)
+			if body != "" {
+				if err := SendTextReply(ctx, replyClient, chatID, fmt.Sprintf("[%s] %s", a.Type, body)); err != nil {
+					slog.Error("action: failed to send unknown action as message", "error", err)
+				}
+			}
+			results = append(results, fmt.Sprintf("Unknown action type: %s", a.Type))
 		}
 	}
 	return results

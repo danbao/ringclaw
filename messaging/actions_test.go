@@ -739,3 +739,145 @@ func TestFormatActionHelp_EventIncludesChatId(t *testing.T) {
 		t.Errorf("event help should mention chatId: %s", result)
 	}
 }
+
+func TestParseAgentActions_Message(t *testing.T) {
+	reply := "好的，帮你发给 Jason。\n\nACTION:MESSAGE chatid=12345\nhello world\nEND_ACTION"
+	clean, actions := ParseAgentActions(reply)
+	if !strings.Contains(clean, "帮你发给") {
+		t.Errorf("clean reply missing text: %s", clean)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(actions))
+	}
+	if actions[0].Type != "MESSAGE" {
+		t.Errorf("expected MESSAGE, got %s", actions[0].Type)
+	}
+	if actions[0].Params["chatid"] != "12345" {
+		t.Errorf("expected chatid=12345, got %s", actions[0].Params["chatid"])
+	}
+	if strings.TrimSpace(actions[0].Body) != "hello world" {
+		t.Errorf("expected body 'hello world', got %q", actions[0].Body)
+	}
+}
+
+func TestExecuteAgentActions_Message(t *testing.T) {
+	var mu sync.Mutex
+	var postedBody string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/posts") && r.Method == "POST" {
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			postedBody, _ = body["text"].(string)
+			mu.Unlock()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": "p1"})
+	}))
+	defer srv.Close()
+
+	client, _ := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {})
+	client.Auth().SetTokenForTest("test-token", time.Now().Add(1*time.Hour))
+
+	actionClient := ringcentral.NewClient(&ringcentral.Credentials{
+		ClientID: "id", ClientSecret: "secret", JWTToken: "jwt", ServerURL: srv.URL,
+	})
+	actionClient.Auth().SetTokenForTest("test-token", time.Now().Add(1*time.Hour))
+
+	actions := []AgentAction{{
+		Type:   "MESSAGE",
+		Params: map[string]string{"chatid": "12345"},
+		Body:   "面试晚点到",
+	}}
+
+	results := ExecuteAgentActions(context.Background(), client, actionClient, "current-chat", actions)
+	if len(results) != 0 {
+		t.Fatalf("expected no errors, got %v", results)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !strings.Contains(postedBody, "面试晚点到") {
+		t.Errorf("expected message body in post, got %q", postedBody)
+	}
+}
+
+func TestExecuteAgentActions_UnknownTypeFallback(t *testing.T) {
+	var mu sync.Mutex
+	var postedBody string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/posts") && r.Method == "POST" {
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			postedBody, _ = body["text"].(string)
+			mu.Unlock()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": "p1"})
+	}))
+	defer srv.Close()
+
+	replyClient := ringcentral.NewClient(&ringcentral.Credentials{
+		ClientID: "id", ClientSecret: "secret", JWTToken: "jwt", ServerURL: srv.URL,
+	})
+	replyClient.Auth().SetTokenForTest("test-token", time.Now().Add(1*time.Hour))
+
+	actions := []AgentAction{{
+		Type: "UNKNOWN",
+		Body: "some content",
+	}}
+
+	results := ExecuteAgentActions(context.Background(), replyClient, replyClient, "chat1", actions)
+	if len(results) != 1 || !strings.Contains(results[0], "Unknown action type") {
+		t.Errorf("expected unknown action warning, got %v", results)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !strings.Contains(postedBody, "UNKNOWN") || !strings.Contains(postedBody, "some content") {
+		t.Errorf("expected unknown action content sent as message, got %q", postedBody)
+	}
+}
+
+func TestBestDirectoryMatch_ExactOverFuzzy(t *testing.T) {
+	records := []ringcentral.DirectoryEntry{
+		{ID: "1", FirstName: "John", LastName: "Linaza"},
+		{ID: "2", FirstName: "John", LastName: "Lin"},
+		{ID: "3", FirstName: "Johnny", LastName: "Lin"},
+	}
+	best := bestDirectoryMatch(records, "John Lin")
+	if best == nil {
+		t.Fatal("expected a match")
+	}
+	if best.ID != "2" {
+		t.Errorf("expected exact match ID=2 (John Lin), got ID=%s (%s %s)", best.ID, best.FirstName, best.LastName)
+	}
+}
+
+func TestBestDirectoryMatch_FuzzyShortestWins(t *testing.T) {
+	records := []ringcentral.DirectoryEntry{
+		{ID: "1", FirstName: "John", LastName: "Linaza Rodriguez"},
+		{ID: "2", FirstName: "John", LastName: "Linaza"},
+	}
+	best := bestDirectoryMatch(records, "John Lin")
+	if best == nil {
+		t.Fatal("expected a match")
+	}
+	// "John Linaza" (11 chars) is shorter than "John Linaza Rodriguez" (21 chars), both fuzzy-match
+	if best.ID != "2" {
+		t.Errorf("expected shorter fuzzy match ID=2 (John Linaza), got ID=%s (%s %s)", best.ID, best.FirstName, best.LastName)
+	}
+}
+
+func TestBestDirectoryMatch_NoMatch(t *testing.T) {
+	records := []ringcentral.DirectoryEntry{
+		{ID: "1", FirstName: "Alice", LastName: "Smith"},
+	}
+	best := bestDirectoryMatch(records, "Bob Jones")
+	if best != nil {
+		t.Errorf("expected no match, got %s %s", best.FirstName, best.LastName)
+	}
+}

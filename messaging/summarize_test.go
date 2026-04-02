@@ -98,11 +98,33 @@ func TestFuzzyMatch(t *testing.T) {
 		{"张三", "张三", true},
 		{"hello", "world", false},
 		{"hello", "", false},
+		{"John Linaza", "John Lin", true},
 	}
 	for _, tt := range tests {
 		got := fuzzyMatch(tt.haystack, tt.needle)
 		if got != tt.want {
 			t.Errorf("fuzzyMatch(%q, %q) = %v, want %v", tt.haystack, tt.needle, got, tt.want)
+		}
+	}
+}
+
+func TestExactMatch(t *testing.T) {
+	tests := []struct {
+		haystack string
+		needle   string
+		want     bool
+	}{
+		{"John Lin", "John Lin", true},
+		{"John Lin", "john lin", true},
+		{" John Lin ", "John Lin", true},
+		{"John Linaza", "John Lin", false},
+		{"John Lin", "John Linaza", false},
+		{"张三", "张三", true},
+	}
+	for _, tt := range tests {
+		got := exactMatch(tt.haystack, tt.needle)
+		if got != tt.want {
+			t.Errorf("exactMatch(%q, %q) = %v, want %v", tt.haystack, tt.needle, got, tt.want)
 		}
 	}
 }

@@ -501,8 +501,16 @@ func extractNameFromText(text string) string {
 	return clean
 }
 
+// exactMatch checks case-insensitive equality (ignoring extra whitespace).
+func exactMatch(haystack, needle string) bool {
+	h := strings.ToLower(strings.TrimSpace(haystack))
+	n := strings.ToLower(strings.TrimSpace(needle))
+	return h == n
+}
+
+// fuzzyMatch checks if haystack contains needle or vice versa (case-insensitive, spaces removed).
 func fuzzyMatch(haystack, needle string) bool {
-	if needle == "" {
+	if needle == "" || haystack == "" {
 		return false
 	}
 	h := strings.ToLower(strings.ReplaceAll(haystack, " ", ""))
