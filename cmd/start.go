@@ -67,10 +67,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 	switch formatStr {
 	case "json":
 		logHandler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})
-	case "color":
-		logHandler = tint.NewHandler(os.Stderr, &tint.Options{Level: logLevel, TimeFormat: time.DateTime})
-	default:
+	case "text":
 		logHandler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})
+	default:
+		logHandler = tint.NewHandler(os.Stderr, &tint.Options{Level: logLevel, TimeFormat: time.DateTime})
 	}
 	slog.SetDefault(slog.New(logHandler))
 
