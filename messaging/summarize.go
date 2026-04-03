@@ -467,6 +467,19 @@ func formatTimeDesc(from time.Time) string {
 
 var reMention = regexp.MustCompile(`!\[:\w+\]\(\d+\)`)
 
+// reInstructionSplit matches multilingual connectors that signal trailing instructions
+// (e.g. "并用 note 发给他", "and then create a note", "そして送る").
+// We split on these and keep only the first segment (the target name).
+var reInstructionSplit = regexp.MustCompile(`(?i)(?:` +
+	`并用|并且|并|然后|接着|之后|同时|再|用|通过|` + // Chinese
+	`and then|then|and also|also|and send|and create|and post|` + // English
+	`そして|それから|その後|` + // Japanese
+	`그리고|그런\s*다음|` + // Korean
+	`puis|ensuite|et\s+aussi|` + // French
+	`luego|después|y\s+también|` + // Spanish
+	`dann|und\s+auch|` + // German
+	`потом|затем|и\s+также)`) // Russian
+
 func extractNameFromText(text string) string {
 	clean := text
 	// Remove summarize keywords
@@ -475,20 +488,33 @@ func extractNameFromText(text string) string {
 	}
 	// Remove mentions
 	clean = reMention.ReplaceAllString(clean, "")
+
+	// Split on instruction connectors — keep only the first segment (the target name)
+	if parts := reInstructionSplit.Split(clean, 2); len(parts) > 1 {
+		clean = parts[0]
+	}
+
 	// Lowercase for filler removal
 	clean = strings.ToLower(clean)
 	// Remove time keywords
 	for _, kw := range []string{"今天", "昨天", "本周", "最近", "过去", "today", "yesterday", "this week", "last"} {
 		clean = strings.ReplaceAll(clean, kw, "")
 	}
-	// Remove common filler words (Chinese single chars and phrases)
+	// Remove CJK filler words (safe for substring removal — no Latin overlap)
 	for _, kw := range []string{
 		"一下", "下", "的", "消息", "聊天", "对话", "群聊", "群",
 		"跟", "和", "与", "我", "了",
-		"messages", "chat", "conversation", "with", "my", "the",
+		"发给", "发送", "发到", "给", "他", "她", "它", "他们",
+		"笔记", "任务", "日程",
 	} {
 		clean = strings.ReplaceAll(clean, kw, "")
 	}
+	// Remove English filler words (whole-word only to avoid stripping letters from names)
+	clean = removeWholeWords(clean, []string{
+		"messages", "chat", "conversation", "with", "my", "the", "of", "a",
+		"send", "to", "him", "her", "them",
+		"note", "task", "event",
+	})
 	// Remove digits
 	clean = reDigits.ReplaceAllString(clean, "")
 	// Remove punctuation and collapse whitespace
@@ -499,6 +525,22 @@ func extractNameFromText(text string) string {
 	}
 	clean = strings.TrimSpace(clean)
 	return clean
+}
+
+// removeWholeWords removes English words by splitting on spaces (avoids stripping letters from names).
+func removeWholeWords(text string, words []string) string {
+	set := make(map[string]bool, len(words))
+	for _, w := range words {
+		set[strings.ToLower(w)] = true
+	}
+	parts := strings.Fields(text)
+	var kept []string
+	for _, p := range parts {
+		if !set[strings.ToLower(p)] {
+			kept = append(kept, p)
+		}
+	}
+	return strings.Join(kept, " ")
 }
 
 // exactMatch checks case-insensitive equality (ignoring extra whitespace).

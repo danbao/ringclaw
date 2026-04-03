@@ -78,6 +78,13 @@ func TestExtractNameFromText(t *testing.T) {
 	}{
 		{"总结一下跟张三的聊天", "张三"},
 		{"summarize chat with John", "john"},
+		// Trailing instruction stripping (multilingual)
+		{"总结 maxwell 并用 note 发给他", "maxwell"},
+		{"summarize john and then create a note", "john"},
+		{"总结张三然后发任务给他", "张三"},
+		{"summary of alice and also send to her", "alice"},
+		{"总结 bob 并且用笔记发送", "bob"},
+		{"summarize dave then send him a task", "dave"},
 	}
 	for _, tt := range tests {
 		got := extractNameFromText(tt.text)
