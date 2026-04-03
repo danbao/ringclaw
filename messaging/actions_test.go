@@ -506,7 +506,7 @@ func TestResolveChatParam_Numeric(t *testing.T) {
 	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {})
 	defer srv.Close()
 
-	id, err := resolveChatParam(context.Background(), client, "12345")
+	id, err := resolveChatParam(context.Background(), client, "12345", "current-chat")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -519,12 +519,27 @@ func TestResolveChatParam_Mention(t *testing.T) {
 	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {})
 	defer srv.Close()
 
-	id, err := resolveChatParam(context.Background(), client, "![:Team](137158549510)")
+	id, err := resolveChatParam(context.Background(), client, "![:Team](137158549510)", "current-chat")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if id != "137158549510" {
 		t.Errorf("expected 137158549510, got %q", id)
+	}
+}
+
+func TestResolveChatParam_SelfPronoun(t *testing.T) {
+	client, srv := newTestActionClient(func(w http.ResponseWriter, r *http.Request) {})
+	defer srv.Close()
+
+	for _, pronoun := range []string{"我", "me", "myself", "私", "나", "moi", "yo", "ich", "я"} {
+		id, err := resolveChatParam(context.Background(), client, pronoun, "current-chat-123")
+		if err != nil {
+			t.Fatalf("resolveChatParam(%q): unexpected error: %v", pronoun, err)
+		}
+		if id != "current-chat-123" {
+			t.Errorf("resolveChatParam(%q) = %q, want %q", pronoun, id, "current-chat-123")
+		}
 	}
 }
 
