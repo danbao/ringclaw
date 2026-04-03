@@ -93,12 +93,32 @@ func isNumericID(s string) bool {
 	return true
 }
 
+// selfPronouns maps first-person pronouns (multilingual) that should resolve
+// to the current chat instead of triggering a directory search.
+var selfPronouns = map[string]bool{
+	"我": true, "me": true, "myself": true,
+	"私": true, "自分": true, // Japanese
+	"나": true, "저": true, // Korean
+	"moi": true, // French
+	"yo": true,  // Spanish
+	"ich": true, // German
+	"я":  true,  // Russian
+}
+
+func isSelfPronoun(s string) bool {
+	return selfPronouns[strings.ToLower(strings.TrimSpace(s))]
+}
+
 // resolveChatParam resolves a chatid param: numeric IDs pass through,
-// names are resolved via directory search + conversation creation.
-func resolveChatParam(ctx context.Context, client *ringcentral.Client, raw string) (string, error) {
+// self-pronouns resolve to currentChatID, names are resolved via directory search.
+func resolveChatParam(ctx context.Context, client *ringcentral.Client, raw string, currentChatID string) (string, error) {
 	id := extractChatID(raw)
 	if isNumericID(id) {
 		return id, nil
+	}
+	if isSelfPronoun(id) {
+		slog.Info("action: resolved self-pronoun to current chat", "pronoun", id, "chatID", currentChatID)
+		return currentChatID, nil
 	}
 	return resolveNameToChatID(ctx, client, id)
 }

@@ -201,7 +201,7 @@ func ExecuteAgentActions(ctx context.Context, replyClient, actionClient *ringcen
 	for _, a := range actions {
 		targetChat := chatID
 		if cid := a.Params["chatid"]; cid != "" {
-			resolved, err := resolveChatParam(ctx, actionClient, cid)
+			resolved, err := resolveChatParam(ctx, actionClient, cid, chatID)
 			if err != nil {
 				slog.Error("action: failed to resolve chatid", "chatid", cid, "error", err)
 				results = append(results, fmt.Sprintf("Failed to resolve chat '%s': %v", cid, err))
